@@ -2,7 +2,7 @@ NASM ?= nasm
 CC ?= cc
 PKG_CONFIG ?= pkg-config
 
-CPPFLAGS += $(shell $(PKG_CONFIG) --cflags libwebsockets libcjson openssl libcurl)
+CPPFLAGS += -Iinclude $(shell $(PKG_CONFIG) --cflags libwebsockets libcjson openssl libcurl)
 CFLAGS ?= -std=c11 -Wall -Wextra -Wpedantic -Werror -O2
 NASMFLAGS ?= -f elf64 -Wall -Werror -Iinclude/ -g -F dwarf
 LDFLAGS ?= -pie -Wl,-z,relro,-z,now,-z,noexecstack
@@ -21,7 +21,7 @@ ASM_SRC := \
 	asm/session.asm \
 	asm/store.asm \
 	asm/world.asm
-C_SRC := ffi/lws_shim.c
+C_SRC := ffi/lws_shim.c ffi/grid_hub.c
 
 ASM_OBJ := $(ASM_SRC:%=$(OBJ)/%.o)
 C_OBJ := $(C_SRC:%=$(OBJ)/%.o)

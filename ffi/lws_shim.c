@@ -10,6 +10,8 @@
 #include <sys/time.h>
 #endif
 
+#include "hg_grid.h"
+
 enum hg_event {
   HG_EVT_CONNECTED = 1,
   HG_EVT_RECEIVE = 2,
@@ -110,12 +112,15 @@ static int handle_http(struct lws *wsi, const char *path) {
     return send_http(wsi, HTTP_STATUS_OK, "application/json", body);
   }
   if (strcmp(path, "/health/deep") == 0) {
+    int grid_ok = 1;
+    long grid_latency = 0;
+    hg_grid_health(&grid_ok, &grid_latency);
     snprintf(body, sizeof(body),
              "{\"ok\":true,\"ts\":%lld,\"world\":\"%s\",\"checks\":{"
              "\"world\":{\"ok\":true,\"latency_ms\":0,\"critical\":true},"
-             "\"grid_hub\":{\"ok\":true,\"latency_ms\":0,"
+             "\"grid_hub\":{\"ok\":%s,\"latency_ms\":%ld,"
              "\"critical\":false}}}",
-             now_ms, active_world);
+             now_ms, active_world, grid_ok ? "true" : "false", grid_latency);
     return send_http(wsi, HTTP_STATUS_OK, "application/json", body);
   }
   if (strcmp(path, "/map.svg") == 0) {
@@ -205,9 +210,15 @@ int hg_lws_run(const char *host, int port, const char *world_name) {
     fprintf(stderr, "failed to create libwebsockets context\n");
     return 1;
   }
+  if (hg_grid_remote()) {
+    /* Best-effort: federation never blocks bringing the world up. */
+    hg_grid_register_self();
+  }
   fprintf(stdout, "%s listening on %s:%d\n", world_name, host, port);
   while (!stopped && lws_service(context, 100) >= 0) {
-    hg_heartbeat(hg_now_ms());
+    long long tick_now = hg_now_ms();
+    hg_heartbeat(tick_now);
+    hg_grid_federation_tick(tick_now);
     lws_service(context, 0);
   }
   lws_context_destroy(context);

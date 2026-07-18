@@ -32,6 +32,7 @@ printf '%s' "$map" | grep -q 'Basalt Relay'
 
 python3 ./tests/ws_persistence.py "$port" "$data"
 python3 ./tests/ws_gameplay.py "$port"
+python3 ./tests/ws_federation.py "$port"
 
 printf '%s\n' "foundation checks passed"
 
