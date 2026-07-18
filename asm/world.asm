@@ -19,6 +19,7 @@ cmd_eq:        db "eq", 0
 cmd_ability:   db "ability", 0
 cmd_trait:     db "trait", 0
 cmd_quit:      db "quit", 0
+cmd_go_prefix: db "go ", 0
 
 cant_move:
     db "The declared ways do not lead there.", 13, 10
@@ -37,6 +38,8 @@ extern hg_emit_inventory
 extern hg_emit_equipment
 extern hg_emit_ability
 extern strcasecmp
+extern strncasecmp
+extern hg_room_move
 
 section .text
 
@@ -74,6 +77,29 @@ hg_world_command:
     call eq
     test eax, eax
     jnz .scene
+
+    ; Full declared-exit movement, including "go <direction>".
+    mov rdi, r14
+    lea rsi, [rel cmd_go_prefix]
+    mov edx, 3
+    call strncasecmp wrt ..plt
+    test eax, eax
+    jnz .direct_move
+    lea rdx, [r14 + 3]
+    jmp .try_move
+.direct_move:
+    mov rdx, r14
+.try_move:
+    mov rdi, [r12 + SESSION_ROOM]
+    mov rsi, rdx
+    call hg_room_move
+    cmp rax, -2
+    je .cant_move
+    cmp rax, -1
+    je .not_movement
+    mov [r12 + SESSION_ROOM], rax
+    jmp .scene
+.not_movement:
 
     mov rdi, r14
     lea rsi, [rel cmd_down]

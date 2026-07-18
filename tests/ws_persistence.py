@@ -111,14 +111,23 @@ def main() -> None:
     resumed = read_until(second, '"id":"tunnels"')
     if "char.create" in resumed:
         raise RuntimeError("returning character was asked to choose a race")
+    for command, room_id in (
+        ("up", "nexus"),
+        ("east", "workshop"),
+        ("up", "roof"),
+        ("east", "relay-cut"),
+    ):
+        send_text(second, command)
+        read_until(second, f'"id":"{room_id}"')
     second.close()
+    time.sleep(0.25)
 
     path = os.path.join(data_dir, "characters", "persistasm.json")
     with open(path, encoding="utf-8") as handle:
         record = json.load(handle)
     assert record["name"] == name
     assert record["race"] == "human"
-    assert record["roomIndex"] == 1
+    assert record["roomIndex"] == 24
     assert record["hp"] == 30
     assert record["inventory"] == ["shiv"]
     print("WebSocket persistence checks passed")

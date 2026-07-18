@@ -4,9 +4,7 @@ PKG_CONFIG ?= pkg-config
 
 CPPFLAGS += $(shell $(PKG_CONFIG) --cflags libwebsockets libcjson openssl libcurl)
 CFLAGS ?= -std=c11 -Wall -Wextra -Wpedantic -Werror -O2
-NASMFLAGS ?= -f elf64 -Wall -Werror \
-	-w-reloc-rel-dword -w-reloc-abs-qword \
-	-Iinclude/ -g -F dwarf
+NASMFLAGS ?= -f elf64 -Wall -Werror -Iinclude/ -g -F dwarf
 LDFLAGS ?= -pie -Wl,-z,relro,-z,now,-z,noexecstack
 LDLIBS += $(shell $(PKG_CONFIG) --libs libwebsockets libcjson openssl libcurl)
 
@@ -18,6 +16,7 @@ ASM_SRC := \
 	asm/main.asm \
 	asm/content.asm \
 	asm/event.asm \
+	asm/rooms.asm \
 	asm/session.asm \
 	asm/store.asm \
 	asm/world.asm

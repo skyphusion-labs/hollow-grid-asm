@@ -38,6 +38,33 @@
 %define SESSION_SIZE     8600
 
 %define ROOM_NEXUS   0
-%define ROOM_TUNNELS 1
+%define ROOM_TAVERN 1
+%define ROOM_MARKET 2
+%define ROOM_HOLDING_PIT 3
+%define ROOM_WORKSHOP 4
+%define ROOM_ROOF 5
+%define ROOM_TUNNELS 6
+%define ROOM_SUMP 7
+%define ROOM_FLOODGATE 8
+%define ROOM_COLDROW 9
+%define ROOM_COOLING 10
+%define ROOM_FIBER 11
+%define ROOM_CORELAB 12
+%define ROOM_ARCHIVE 13
+%define ROOM_DUNES 14
+%define ROOM_SCORCH_ROAD 15
+%define ROOM_WAYSTATION 16
+%define ROOM_TRANSIT_HUB 17
+%define ROOM_CHECKPOINT 18
+%define ROOM_GATE 19
+%define ROOM_MUSTER 20
+%define ROOM_CELLS 21
+%define ROOM_WARROOM 22
+%define ROOM_DAIS 23
+%define ROOM_RELAY_CUT 24
+%define ROOM_HANDOFF_BAY 25
+%define ROOM_CUSTODY_LOCK 26
+%define ROOM_EAST_REPEATER 27
+%define ROOM_COUNT 28
 
 %endif
