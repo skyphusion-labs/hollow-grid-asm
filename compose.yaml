@@ -1,0 +1,25 @@
+services:
+  basalt-relay:
+    build:
+      context: .
+      platforms:
+        - linux/amd64
+    image: ghcr.io/skyphusion-labs/hollow-grid-asm:local
+    platform: linux/amd64
+    restart: unless-stopped
+    ports:
+      - "8793:8793"
+    environment:
+      LISTEN_ADDR: 0.0.0.0:8793
+      WORLD_NAME: Basalt Relay
+      WORLD_URL: ${WORLD_URL:-ws://127.0.0.1:8793/ws}
+      GRID_HUB_URL: ${GRID_HUB_URL:-}
+      GRID_HUB_TOKEN: ${GRID_HUB_TOKEN:-}
+      DATA_DIR: /data
+      ADMINS: ${ADMINS:-skyphusion}
+    volumes:
+      - basalt-relay-data:/data
+
+volumes:
+  basalt-relay-data:
+
