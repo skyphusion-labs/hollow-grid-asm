@@ -49,6 +49,14 @@ cmd_ping_sp:   db "ping ", 0
 cmd_world:     db "world", 0
 cmd_weather:   db "weather", 0
 cmd_time:      db "time", 0
+cmd_listen:    db "listen", 0
+cmd_tune:      db "tune", 0
+cmd_whoami:    db "whoami", 0
+cmd_identity:  db "identity", 0
+cmd_worlds:    db "worlds", 0
+cmd_travel:    db "travel", 0
+cmd_travel_sp: db "travel ", 0
+cmd_gate:      db "gate", 0
 
 cant_move:
     db "The declared ways do not lead there.", 13, 10
@@ -82,6 +90,10 @@ extern hg_cmd_join
 extern hg_cmd_defend
 extern hg_cmd_ping
 extern hg_cmd_world
+extern hg_cmd_listen
+extern hg_cmd_whoami
+extern hg_cmd_worlds
+extern hg_cmd_travel
 
 section .text
 
@@ -311,6 +323,51 @@ hg_world_command:
     jnz .world
 
     mov rdi, r14
+    lea rsi, [rel cmd_listen]
+    call eq
+    test eax, eax
+    jnz .listen
+    mov rdi, r14
+    lea rsi, [rel cmd_tune]
+    call eq
+    test eax, eax
+    jnz .listen
+
+    mov rdi, r14
+    lea rsi, [rel cmd_whoami]
+    call eq
+    test eax, eax
+    jnz .whoami
+    mov rdi, r14
+    lea rsi, [rel cmd_identity]
+    call eq
+    test eax, eax
+    jnz .whoami
+
+    mov rdi, r14
+    lea rsi, [rel cmd_worlds]
+    call eq
+    test eax, eax
+    jnz .worlds
+
+    mov rdi, r14
+    lea rsi, [rel cmd_travel]
+    call eq
+    test eax, eax
+    jnz .travel_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_travel_sp]
+    mov edx, 7
+    call prefix
+    test eax, eax
+    jnz .travel_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_gate]
+    call eq
+    test eax, eax
+    jnz .travel_empty
+
+    mov rdi, r14
     lea rsi, [rel cmd_down]
     call eq
     test eax, eax
@@ -506,6 +563,33 @@ hg_world_command:
     mov rdi, r12
     mov rsi, r13
     call hg_cmd_world
+    jmp .done
+.listen:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_listen
+    jmp .done
+.whoami:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_whoami
+    jmp .done
+.worlds:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_worlds
+    jmp .done
+.travel_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_travel
+    jmp .done
+.travel_arg:
+    lea rdx, [r14 + 7]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_travel
     jmp .done
 
 .down:

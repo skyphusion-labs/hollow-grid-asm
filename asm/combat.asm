@@ -13,10 +13,6 @@ session_table: resq HG_MAX_SESSIONS
 session_wsi_table: resq HG_MAX_SESSIONS
 session_count: resq 1
 heartbeat_now_ms: resq 1
-trace_count: resq 1
-trace_room: resd HG_MAX_TRACES
-trace_kind: resb HG_MAX_TRACES * 32
-trace_text: resb HG_MAX_TRACES * 160
 vitals_scratch: resb 512
 affects_scratch: resb 512
 
@@ -105,11 +101,12 @@ fight_block_end:
 fight_block_len: equ fight_block_end - fight_block
 exits_fmt: db "Exits: %s", 13, 10, 0
 world_prose_fmt: db "The sky: %s, clear.", 13, 10, 0
-ping_empty:
-    db "You key into the dead Grid. Static, a cold hum... but this node remembers nothing. Not yet.", 13, 10, 0
-ping_empty_end:
-ping_empty_len: equ ping_empty_end - ping_empty
-ping_trace_fmt: db "  - %s", 13, 10, 0
+arg_all: db "all", 0
+died_prose:
+    db "The wastes take you. Your last sight is the tunnel ceiling, and then the dead network's cold half-light instead.", 13, 10, 0
+died_prose_end:
+died_prose_len: equ died_prose_end - died_prose
+char_died_fmt: db '@event char.died {"respawnRoom":"nexus","hp":%ld,"maxHp":%ld}', 13, 10, 0
 vitals_fmt:
     db '@event char.vitals {"hp":%ld,"maxHp":%ld,"level":%ld,"xp":%ld,"gold":%ld,"room":"%s","inCombat":false,"poisoned":false,"position":"%s"}', 13, 10, 0
 vitals_combat_fmt:
@@ -156,14 +153,10 @@ combat_end_gone:
     db '@event combat.end {"mob":"rat","result":"gone"}', 13, 10
 combat_end_gone_end:
 combat_end_gone_len: equ combat_end_gone_end - combat_end_gone
-trace_slain: db "slain", 0
-trace_slain_text: db "Someone slew luminous rat here.", 0
 dream_event:
     db '@event char.dream {"text":"You dream of the wastes seen from above, the dead network laid out like veins.","personal":false}', 13, 10
 dream_event_end:
 dream_event_len: equ dream_event_end - dream_event
-grid_echo_empty:
-    db '@event grid.echo {"node":"%s","traces":[]}', 13, 10, 0
 phase_day: db "day", 0
 phase_dusk: db "dusk", 0
 phase_night: db "night", 0
@@ -186,6 +179,14 @@ extern hg_format_vitals
 extern hg_format_combat_round
 extern hg_format_world_state
 extern hg_format_affects
+extern hg_grid_on_kill
+extern hg_grid_on_death
+extern hg_grid_fmt_listen
+extern hg_grid_fmt_ping_echo
+extern hg_grid_fmt_ping_all
+extern hg_grid_fmt_worlds
+extern hg_grid_fmt_travel
+extern hg_grid_fmt_whoami
 
 global hg_world_boot
 global hg_emit_vitals
@@ -206,6 +207,10 @@ global hg_cmd_join
 global hg_cmd_defend
 global hg_cmd_ping
 global hg_cmd_world
+global hg_cmd_listen
+global hg_cmd_whoami
+global hg_cmd_worlds
+global hg_cmd_travel
 global hg_session_pulse
 
 ; rdi=session, rsi=wsi, rdx=data, rcx=len
@@ -268,42 +273,11 @@ player_damage:
 .done:
     ret
 
-record_trace:
-    push r12
-    push r13
-    push r14
-    mov r12, rdi
-    mov r13, rsi
-    mov r14, rdx
-    mov rax, [rel trace_count]
-    cmp rax, HG_MAX_TRACES
-    jb .slot_ok
-    mov rax, HG_MAX_TRACES - 1
-.slot_ok:
-    mov [rel trace_count], rax
-    lea r15, [rel trace_room]
-    mov [r15 + rax * 4], r12d
-    lea rdi, [rel trace_kind]
-    imul rcx, rax, 32
-    add rdi, rcx
-    mov rsi, r13
-    call strcpy wrt ..plt
-    lea rdi, [rel trace_text]
-    imul rcx, rax, 160
-    add rdi, rcx
-    mov rsi, r14
-    call strcpy wrt ..plt
-    inc qword [rel trace_count]
-    pop r14
-    pop r13
-    pop r12
-    ret
-
 emit_world_state:
     push r12
     push r13
     push r15
-    sub rsp, 280
+    sub rsp, 288           ; multiple of 16: keeps rsp aligned for the C call below
     mov r12, rdi
     mov r13, rsi
     mov r15, rsp
@@ -320,7 +294,7 @@ emit_world_state:
     mov rsi, r13
     mov rdx, r15
     call queue_cstring
-    add rsp, 280
+    add rsp, 288
     pop r15
     pop r13
     pop r12
@@ -398,6 +372,11 @@ combat_round:
     lea rdx, [rel peace_vitals]
     mov ecx, peace_vitals_len
     call queue_bytes
+    call kill_hub_record
+    cmp qword [r12 + SESSION_HP], 0
+    jg .round_one_ret
+    call player_died
+.round_one_ret:
     pop rax
     pop r13
     pop r12
@@ -426,18 +405,70 @@ combat_round:
     lea rdx, [rel peace_vitals]
     mov ecx, peace_vitals_len
     call queue_bytes
+    call kill_hub_record
     mov rdi, r12
     mov rsi, r13
     lea rdx, [rel kill_prose_fmt]
     call queue_cstring
-    sub rsp, 8
     mov rdi, r12
     call hg_store_save
-    add rsp, 8
 .done:
     pop rax
     pop r13
     pop r12
+    ret
+
+; r12=session (preserved by both callees per SysV ABI). Best-effort hub
+; record + local echo for a rat kill; never touches session state.
+; sub rsp,8 restores 16-byte stack alignment before calling into C (this is
+; called mid-expression from combat_round with an already-8-mod-16 rsp).
+kill_hub_record:
+    sub rsp, 8
+    mov rdi, [r12 + SESSION_ROOM]
+    call hg_room_id
+    mov rdi, rax
+    lea rsi, [r12 + SESSION_NAME]
+    lea rdx, [rel mob_luminous]
+    call hg_grid_on_kill wrt ..plt
+    add rsp, 8
+    ret
+
+; r12=session, r13=wsi. Defensive death path: current damage numbers never
+; drive HP to 0, so this is unreached in practice, but wired for when combat
+; balance changes. Records the fall, respawns to the nexus, and queues
+; prose + char.died.
+player_died:
+    push r14
+    sub rsp, 512
+    mov r14, rsp
+    mov rdi, [r12 + SESSION_ROOM]
+    call hg_room_id
+    mov rdi, rax
+    lea rsi, [r12 + SESSION_NAME]
+    call hg_grid_on_death wrt ..plt
+    mov rax, [r12 + SESSION_MAX_HP]
+    mov [r12 + SESSION_HP], rax
+    mov qword [r12 + SESSION_ROOM], ROOM_NEXUS
+    mov qword [r12 + SESSION_IN_COMBAT], 0
+    mov rdi, r12
+    mov rsi, r13
+    lea rdx, [rel died_prose]
+    mov ecx, died_prose_len
+    call queue_bytes
+    mov rdi, r14
+    mov esi, 240
+    lea rdx, [rel char_died_fmt]
+    mov rcx, [r12 + SESSION_HP]
+    mov r8, [r12 + SESSION_MAX_HP]
+    xor eax, eax
+    call snprintf wrt ..plt
+    mov rdi, r12
+    mov rsi, r13
+    mov rdx, r14
+    mov ecx, eax
+    call queue_bytes
+    add rsp, 512
+    pop r14
     ret
 
 tick_session:
@@ -550,7 +581,6 @@ hg_world_boot:
     mov qword [rel rat_died_at], 0
     mov byte [rel market_resolved], 0
     mov qword [rel session_count], 0
-    mov qword [rel trace_count], 0
     push r15
     push r14
     lea r15, [rel session_table]
@@ -960,69 +990,142 @@ hg_cmd_defend:
     mov ecx, no_stand_len
     jmp queue_bytes
 
+; ping (rdx=NULL): this room's local echo, via the grid hub's node-local
+; memory (always available, remote or local mode).
+; ping all (rdx="all"): recentAcross the whole federation.
 hg_cmd_ping:
     call setup_cmd
-    push r15
     push r14
-    sub rsp, 512
-    mov r15, rsp
-    lea rax, [rel trace_room]
-    xor ebx, ebx
-    xor r14d, r14d
-    mov ecx, [rel trace_count]
-    test ecx, ecx
-    jz .empty
-.scan:
-    cmp ebx, ecx
-    jae .empty
-    mov edx, [rax + rbx * 4]
-    cmp rdx, [r12 + SESSION_ROOM]
-    jne .next_trace
-    lea rdx, [rel trace_text]
-    imul rax, rbx, 160
-    add rdx, rax
-    mov rdi, r15
-    mov esi, 480
-    lea r8, [rel ping_trace_fmt]
-    mov rcx, rdx
-    xor eax, eax
-    mov rdx, r8
-    call snprintf wrt ..plt
-    mov rdi, r12
-    mov rsi, r13
-    mov rdx, r15
-    mov rcx, rax
-    call queue_bytes
-    inc r14d
-.next_trace:
-    inc ebx
-    mov ecx, [rel trace_count]
-    jmp .scan
-.empty:
-    test r14d, r14d
-    jnz .emit_echo
-    mov rdi, r12
-    mov rsi, r13
-    lea rdx, [rel ping_empty]
-    mov ecx, ping_empty_len
-    call queue_bytes
-.emit_echo:
+    mov r14, rdx
+    sub rsp, 3072
+    test r14, r14
+    jz .room
+    mov rdi, r14
+    lea rsi, [rel arg_all]
+    call strcasecmp wrt ..plt
+    test eax, eax
+    jnz .room
+    mov rdi, rsp
+    mov esi, 3072
+    call hg_grid_fmt_ping_all wrt ..plt
+    jmp .emit
+.room:
     mov rdi, [r12 + SESSION_ROOM]
     call hg_room_id
-    mov rcx, rax
-    mov rdi, r15
-    mov esi, 480
-    lea rdx, [rel grid_echo_empty]
-    xor eax, eax
-    call snprintf wrt ..plt
+    mov rdx, rax
+    mov rdi, rsp
+    mov esi, 3072
+    call hg_grid_fmt_ping_echo wrt ..plt
+.emit:
+    cmp eax, 0
+    jl .done
     mov rdi, r12
     mov rsi, r13
-    mov rdx, r15
-    mov rcx, rax
+    mov rdx, rsp
+    mov ecx, eax
     call queue_bytes
-    add rsp, 512
+.done:
+    add rsp, 3072
     pop r14
-    pop r15
+    ret
+
+; listen / tune: a random cross-world echo (recentAcross-flavored prose).
+hg_cmd_listen:
+    call setup_cmd
+    sub rsp, 1032          ; +8 keeps rsp 16-aligned before the C call below
+    mov rdi, rsp
+    mov esi, 1024
+    call hg_grid_fmt_listen wrt ..plt
+    cmp eax, 0
+    jl .done
+    mov rdi, r12
+    mov rsi, r13
+    mov rdx, rsp
+    mov ecx, eax
+    call queue_bytes
+.done:
+    add rsp, 1032
+    ret
+
+; whoami / identity: char sheet, with a best-effort hub overlay (loadCharacter)
+; in remote mode. Session fields feed a stack hg_grid_identity_ctx; C owns
+; the prose + @event formatting.
+hg_cmd_whoami:
+    call setup_cmd
+    sub rsp, 600           ; +8 keeps rsp 16-aligned before the C calls below
+    lea rax, [r12 + SESSION_NAME]
+    mov [rsp + 0], rax
+    mov rax, [r12 + SESSION_LEVEL]
+    mov [rsp + 8], rax
+    mov rax, [r12 + SESSION_XP]
+    mov [rsp + 16], rax
+    mov rax, [r12 + SESSION_GOLD]
+    mov [rsp + 24], rax
+    lea rax, [r12 + SESSION_FACTION]
+    mov [rsp + 32], rax
+    mov rax, [r12 + SESSION_MORALITY]
+    mov [rsp + 40], rax
+    lea rax, [r12 + SESSION_TITLE]
+    mov [rsp + 48], rax
+    lea rax, [r12 + SESSION_RACE]
+    mov [rsp + 56], rax
+    mov rax, [r12 + SESSION_ASHSWORN]
+    mov [rsp + 64], rax
+    lea rdi, [rsp + 80]
+    mov esi, 512
+    mov rdx, rsp
+    call hg_grid_fmt_whoami wrt ..plt
+    cmp eax, 0
+    jl .done
+    lea rdx, [rsp + 80]
+    mov ecx, eax
+    mov rdi, r12
+    mov rsi, r13
+    call queue_bytes
+.done:
+    add rsp, 600
+    ret
+
+; worlds: listWorlds, formatted with reachability tags.
+hg_cmd_worlds:
+    call setup_cmd
+    sub rsp, 3080          ; +8 keeps rsp 16-aligned before the C call below
+    mov rdi, rsp
+    mov esi, 3072
+    call hg_grid_fmt_worlds wrt ..plt
+    cmp eax, 0
+    jl .done
+    mov rdi, r12
+    mov rsi, r13
+    mov rdx, rsp
+    mov ecx, eax
+    call queue_bytes
+.done:
+    add rsp, 3080
+    ret
+
+; travel / gate (rdx=target, or NULL to just list worlds): shows the
+; destination and its reconnect URL. No mid-session handoff yet (Phase 3
+; only lists destinations; see docs/PLAN.md).
+hg_cmd_travel:
+    call setup_cmd
+    push r14
+    mov r14, rdx
+    sub rsp, 3072
+    mov rdi, rsp
+    mov esi, 3072
+    mov rdx, r14
+    call hg_grid_fmt_travel wrt ..plt
+    cmp eax, 0
+    jl .done
+    mov rdi, r12
+    mov rsi, r13
+    mov rdx, rsp
+    mov ecx, eax
+    call queue_bytes
+.done:
+    add rsp, 3072
+    pop r14
     ret
 
 hg_cmd_world:

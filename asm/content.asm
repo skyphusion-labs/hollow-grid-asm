@@ -58,7 +58,7 @@ hg_unknown_command_end:
 hg_unknown_command_len: dq hg_unknown_command_end - hg_unknown_command
 
 hg_help:
-    db "Commands: look, exits, north/south/east/west/up/down, go <dir>, inventory, equipment, wield, remove, attack, consider, rest, stand, sleep, join, defend, ping, world, ability, help, quit", 13, 10
+    db "Commands: look, exits, north/south/east/west/up/down, go <dir>, inventory, equipment, wield, remove, attack, consider, rest, stand, sleep, join, defend, ping [all], listen, whoami, worlds, travel <world>, gate, world, ability, help, quit", 13, 10
 hg_help_end:
 hg_help_len: dq hg_help_end - hg_help
 
