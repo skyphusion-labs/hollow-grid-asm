@@ -56,6 +56,8 @@ extern hg_store_load
 extern hg_store_save
 extern hg_session_register
 extern hg_session_unregister
+extern hg_grid_load_session
+extern hg_grid_commit_session
 
 section .text
 
@@ -294,9 +296,13 @@ hg_app_callback:
     mov rdi, r13
     call hg_store_load
     cmp eax, 1
-    je .resume
+    je .resume_local
     test eax, eax
     js .load_failed
+    mov rdi, r13
+    call hg_grid_load_session wrt ..plt
+    cmp eax, 1
+    je .resume_hub
     mov qword [r13 + SESSION_STATE], HG_LOGIN_RACE
     mov rdi, r13
     mov rsi, r12
@@ -305,6 +311,17 @@ hg_app_callback:
     call hg_session_queue
     jmp .ok
 
+.resume_local:
+    mov rdi, r13
+    call hg_grid_load_session wrt ..plt
+    cmp eax, 0
+    jne .resume
+    mov rdi, r13
+    call hg_grid_commit_session wrt ..plt
+    jmp .resume
+.resume_hub:
+    mov rdi, r13
+    call hg_store_save
 .resume:
     mov qword [r13 + SESSION_STATE], HG_LOGIN_PLAY
     mov rdi, r13
@@ -357,6 +374,8 @@ hg_app_callback:
     call strcpy wrt ..plt
     mov rdi, r13
     call hg_store_save
+    mov rdi, r13
+    call hg_grid_commit_session wrt ..plt
     mov qword [r13 + SESSION_STATE], HG_LOGIN_PLAY
     mov rdi, r13
     mov rsi, r12
@@ -404,6 +423,8 @@ hg_app_callback:
 .closed:
     cmp qword [r13 + SESSION_STATE], HG_LOGIN_PLAY
     jne .clear_closed
+    mov rdi, r13
+    call hg_grid_commit_session wrt ..plt
     mov rdi, r13
     call hg_store_save
     mov rdi, r13

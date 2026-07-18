@@ -94,6 +94,11 @@ int hg_grid_shift_tide(int delta, int *out_tide);
 int hg_grid_gridcast(const char *sender, const char *text);
 int hg_grid_commit_character(const char *name,
                              const hg_grid_identity_ctx *ctx);
+/* Load or commit the canonical identity fields carried by an ASM session.
+ * load returns 1 when a canonical race exists, 0 for a new/standalone
+ * character, and -1 when the remote hub is unavailable. */
+int hg_grid_load_session(void *session);
+int hg_grid_commit_session(void *session);
 
 typedef struct {
   char world[48];

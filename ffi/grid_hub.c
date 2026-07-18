@@ -6,6 +6,7 @@
  * when to call and how to dispatch player commands (docs/ARCHITECTURE.md).
  */
 #include "hg_grid.h"
+#include "hg_session.h"
 
 #include <cjson/cJSON.h>
 #include <ctype.h>
@@ -791,8 +792,36 @@ int hg_grid_fmt_listen(char *buf, size_t cap) {
     }
     return (int)off;
   }
-  if (g.trace_count > 0) {
-    const hg_trace *t = &g.traces[rand() % g.trace_count];
+  hg_trace remote_trace = {0};
+  const hg_trace *t = NULL;
+  if (g.remote) {
+    cJSON *params = cJSON_CreateArray();
+    cJSON_AddItemToArray(params, cJSON_CreateNumber(20));
+    cJSON *result = NULL;
+    if (rpc_call("recent", params, &result) == 0 && cJSON_IsArray(result)) {
+      int count = cJSON_GetArraySize(result);
+      const cJSON *row =
+          count > 0 ? cJSON_GetArrayItem(result, rand() % count) : NULL;
+      if (cJSON_IsObject(row)) {
+        safe_copy(remote_trace.world, sizeof(remote_trace.world),
+                  json_str(row, "world"));
+        safe_copy(remote_trace.node, sizeof(remote_trace.node),
+                  json_str(row, "node"));
+        safe_copy(remote_trace.kind, sizeof(remote_trace.kind),
+                  json_str(row, "kind"));
+        safe_copy(remote_trace.text, sizeof(remote_trace.text),
+                  json_str(row, "text"));
+        remote_trace.at = json_ll(row, "at");
+        if (remote_trace.text[0] != '\0') {
+          t = &remote_trace;
+        }
+      }
+    }
+    cJSON_Delete(result);
+  } else if (g.trace_count > 0) {
+    t = &g.traces[rand() % g.trace_count];
+  }
+  if (t != NULL) {
     char esc[220];
     json_escape(esc, sizeof(esc), t->text);
     if (append(buf, cap, &off,
@@ -1221,6 +1250,65 @@ int hg_grid_commit_character(const char *name,
   cJSON_AddBoolToObject(obj, "ashsworn", ctx->ashsworn != 0);
   cJSON_AddItemToArray(params, obj);
   return rpc_call("commitCharacter", params, NULL);
+}
+
+int hg_grid_load_session(void *session) {
+  if (!g.remote || session == NULL) {
+    return 0;
+  }
+  const char *name = hg_s_str(session, HG_SESSION_NAME);
+  if (name == NULL || name[0] == '\0') {
+    return 0;
+  }
+  cJSON *params = cJSON_CreateArray();
+  cJSON_AddItemToArray(params, cJSON_CreateString(name));
+  cJSON *result = NULL;
+  if (rpc_call("loadCharacter", params, &result) != 0) {
+    return -1;
+  }
+  if (!cJSON_IsObject(result)) {
+    cJSON_Delete(result);
+    return -1;
+  }
+  const char *race = json_str(result, "race");
+  if (race[0] == '\0') {
+    cJSON_Delete(result);
+    return 0;
+  }
+  hg_s_set_i64(session, HG_SESSION_LEVEL, json_num(result, "level", 1));
+  hg_s_set_i64(session, HG_SESSION_XP, json_num(result, "xp", 0));
+  hg_s_set_i64(session, HG_SESSION_GOLD, json_num(result, "gold", 20));
+  hg_s_set_i64(session, HG_SESSION_MORALITY,
+               json_num(result, "morality", 0));
+  const cJSON *ashsworn =
+      cJSON_GetObjectItemCaseSensitive(result, "ashsworn");
+  hg_s_set_i64(session, HG_SESSION_ASHSWORN,
+               cJSON_IsTrue(ashsworn) ? 1 : 0);
+  safe_copy(hg_s_str_mut(session, HG_SESSION_FACTION), 16,
+            json_str(result, "faction"));
+  safe_copy(hg_s_str_mut(session, HG_SESSION_TITLE), 48,
+            json_str(result, "title"));
+  safe_copy(hg_s_str_mut(session, HG_SESSION_RACE), 16, race);
+  cJSON_Delete(result);
+  return 1;
+}
+
+int hg_grid_commit_session(void *session) {
+  if (!g.remote || session == NULL) {
+    return 0;
+  }
+  hg_grid_identity_ctx ctx = {
+      .name = hg_s_str(session, HG_SESSION_NAME),
+      .level = (long)hg_s_i64(session, HG_SESSION_LEVEL),
+      .xp = (long)hg_s_i64(session, HG_SESSION_XP),
+      .gold = (long)hg_s_i64(session, HG_SESSION_GOLD),
+      .faction = hg_s_str(session, HG_SESSION_FACTION),
+      .morality = (long)hg_s_i64(session, HG_SESSION_MORALITY),
+      .title = hg_s_str(session, HG_SESSION_TITLE),
+      .race = hg_s_str(session, HG_SESSION_RACE),
+      .ashsworn = (long)hg_s_i64(session, HG_SESSION_ASHSWORN),
+  };
+  return hg_grid_commit_character(ctx.name, &ctx);
 }
 
 int hg_grid_recent_rescued(int limit, hg_grid_rescued_row *out, size_t cap,
