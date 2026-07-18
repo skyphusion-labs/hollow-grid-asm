@@ -6,10 +6,12 @@ section .rodata
 prose_fmt: db "%s", 13, 10, "%s", 13, 10, 0
 room_fmt:
     db '@event room.info {"id":"%s","name":"%s","exits":%s,"mobs":%s,"items":[],"players":[]}', 13, 10, 0
-vitals_fmt:
-    db '@event char.vitals {"hp":%ld,"maxHp":%ld,"level":%ld,"xp":%ld,"gold":%ld,"room":"%s","inCombat":false,"poisoned":false,"position":"%s"}', 13, 10, 0
 affects_fmt:
     db '@event char.affects {"morality":%ld,"addiction":%ld,"faction":"%s","resisted":false,"race":"%s","ashsworn":%s}', 13, 10, 0
+vitals_fmt:
+    db '@event char.vitals {"hp":%ld,"maxHp":%ld,"level":%ld,"xp":%ld,"gold":%ld,"room":"%s","inCombat":false,"poisoned":false,"position":"%s"}', 13, 10, 0
+vitals_combat_fmt:
+    db '@event char.vitals {"hp":%ld,"maxHp":%ld,"level":%ld,"xp":%ld,"gold":%ld,"room":"%s","inCombat":true,"poisoned":false,"position":"%s"}', 13, 10, 0
 actions_fmt:
     db '@event room.actions {"actions":%s}', 13, 10, 0
 world_state:
@@ -18,11 +20,16 @@ world_state_end:
 world_state_len: equ world_state_end - world_state
 json_true: db "true", 0
 json_false: db "false", 0
-
-equipment_event:
+equip_weapon_fmt:
+    db '@event char.equipment {"weapon":"%s","head":null,"body":null,"hands":null,"feet":null}', 13, 10, 0
+equip_shiv:
+    db '@event char.equipment {"weapon":"shiv","head":null,"body":null,"hands":null,"feet":null}', 13, 10
+equip_shiv_end:
+equip_shiv_len: equ equip_shiv_end - equip_shiv
+equip_empty:
     db '@event char.equipment {"weapon":null,"head":null,"body":null,"hands":null,"feet":null}', 13, 10
-equipment_event_end:
-equipment_event_len: equ equipment_event_end - equipment_event
+equip_empty_end:
+equip_empty_len: equ equip_empty_end - equip_empty
 
 inventory_text:
     db "You carry: shiv.", 13, 10
@@ -34,24 +41,24 @@ ability_text:
 ability_text_end:
 ability_text_len: equ ability_text_end - ability_text
 
-section .text
-
 extern snprintf
 extern strlen
+extern strcasecmp
 extern hg_session_queue
 extern hg_room_id
 extern hg_room_name
 extern hg_room_desc
 extern hg_room_exits
-extern hg_room_mobs
 extern hg_room_actions
+extern hg_room_live_mobs
+
+section .text
 
 global hg_emit_scene
 global hg_emit_equipment
 global hg_emit_inventory
 global hg_emit_ability
 
-; Queue the zero-terminated buffer at r15.
 queue_buffer:
     sub rsp, 8
     mov rdi, r15
@@ -64,7 +71,6 @@ queue_buffer:
     add rsp, 8
     ret
 
-; rdi=session, rsi=wsi
 hg_emit_scene:
     push r12
     push r13
@@ -76,7 +82,6 @@ hg_emit_scene:
     mov r14, [r12 + SESSION_ROOM]
     lea r15, [rsp + 64]
 
-    ; Human prose.
     mov rdi, r14
     call hg_room_name
     mov rcx, rax
@@ -90,7 +95,6 @@ hg_emit_scene:
     call snprintf wrt ..plt
     call queue_buffer
 
-    ; room.info
     mov rdi, r14
     call hg_room_id
     mov rcx, rax
@@ -101,7 +105,7 @@ hg_emit_scene:
     call hg_room_exits
     mov r9, rax
     mov rdi, r14
-    call hg_room_mobs
+    call hg_room_live_mobs
     mov [rsp], rax
     mov rdi, r15
     mov esi, 1984
@@ -110,7 +114,6 @@ hg_emit_scene:
     call snprintf wrt ..plt
     call queue_buffer
 
-    ; char.vitals
     mov rdi, r14
     call hg_room_id
     mov rcx, [r12 + SESSION_HP]
@@ -123,14 +126,17 @@ hg_emit_scene:
     mov [rsp + 16], rax
     lea rax, [r12 + SESSION_POSITION]
     mov [rsp + 24], rax
+    lea rdx, [rel vitals_fmt]
+    cmp qword [r12 + SESSION_IN_COMBAT], 0
+    je .vitals_ready
+    lea rdx, [rel vitals_combat_fmt]
+.vitals_ready:
     mov rdi, r15
     mov esi, 1984
-    lea rdx, [rel vitals_fmt]
     xor eax, eax
     call snprintf wrt ..plt
     call queue_buffer
 
-    ; char.affects
     mov rcx, [r12 + SESSION_MORALITY]
     mov r8, [r12 + SESSION_ADDICTION]
     lea r9, [r12 + SESSION_FACTION]
@@ -149,7 +155,6 @@ hg_emit_scene:
     call snprintf wrt ..plt
     call queue_buffer
 
-    ; room.actions and living world.
     mov rdi, r14
     call hg_room_actions
     mov rcx, rax
@@ -174,9 +179,26 @@ hg_emit_scene:
     ret
 
 hg_emit_equipment:
-    lea rdx, [rel equipment_event]
-    mov ecx, equipment_event_len
-    jmp hg_session_queue
+    push r12
+    push r13
+    mov r12, rdi
+    mov r13, rsi
+    lea rdi, [r12 + SESSION_WEAPON]
+    cmp byte [rdi], 0
+    je .empty
+    lea rdx, [rel equip_shiv]
+    mov ecx, equip_shiv_len
+    jmp .queue
+.empty:
+    lea rdx, [rel equip_empty]
+    mov ecx, equip_empty_len
+.queue:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_session_queue
+    pop r13
+    pop r12
+    ret
 
 hg_emit_inventory:
     lea rdx, [rel inventory_text]
@@ -200,4 +222,3 @@ hg_emit_ability:
     pop r13
     pop r12
     ret
-

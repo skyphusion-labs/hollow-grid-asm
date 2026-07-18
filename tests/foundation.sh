@@ -31,6 +31,7 @@ map=$(curl -fsS "http://127.0.0.1:$port/map.svg")
 printf '%s' "$map" | grep -q 'Basalt Relay'
 
 python3 ./tests/ws_persistence.py "$port" "$data"
+python3 ./tests/ws_gameplay.py "$port"
 
 printf '%s\n' "foundation checks passed"
 

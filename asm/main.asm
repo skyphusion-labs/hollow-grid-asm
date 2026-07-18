@@ -29,6 +29,7 @@ extern sscanf
 extern puts
 extern hg_lws_run
 extern hg_store_init
+extern hg_world_boot
 
 section .bss
 
@@ -150,6 +151,8 @@ main:
     call hg_store_init
     test eax, eax
     jnz .store_failed
+
+    call hg_world_boot wrt ..plt
 
     lea rdi, [rel host_buffer]
     mov esi, [rel port_value]
