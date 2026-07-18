@@ -4,8 +4,8 @@ Basalt Relay has a green standalone conformance run (Phase 2). The linux/amd64
 image, health endpoints, WebSocket login, race menu, atomic persistence,
 character resume, canonical map, Relay Cut, declared movement, gameplay,
 moral arc, and LocalHub federation commands exercised by upstream smoke are
-verified. Live two-world federation, GHCR release, and fleet deploy are not
-yet claimed.
+verified. GHCR release + fleet deploy IaC land in Phase 4; live two-world
+federation against Dustfall is recorded after public ingress verify.
 
 ## Phase 0: build and ABI foundation
 
@@ -93,9 +93,26 @@ moral arc (dais join/defy Returned, steal-stray, forgive/redeem, reckoning/deeds
 ## Phase 4: release
 
 - [x] Add foundation container and protected-main CI
-- [ ] Document deployment configuration and source-offer obligations
+- [x] Document deployment configuration and source-offer obligations
+      (`release.yml` pushes `ghcr.io/skyphusion-labs/hollow-grid-asm`;
+      fleet stack `system/stacks/biafra/basalt-relay/` in fleet-chezmoi;
+      AGPL source offer is this public repository)
 - [ ] Deploy only after health, smoke, restart, and persistence checks pass
 - [ ] Add a live URL only after verifying the deployed service
+
+### Deployment config (IaC)
+
+| Item | Value |
+| --- | --- |
+| Public WS | `wss://basalt.skyphusion.org/ws` |
+| Health | `https://basalt.skyphusion.org/health` |
+| Image | `ghcr.io/skyphusion-labs/hollow-grid-asm` |
+| Host bind | `10.1.1.6:8793` (biafra) |
+| Stack path | `/opt/stacks/basalt-relay` |
+| Roll | `basalt-relay-roll` -> `roll-basalt-relay.sh` via deploy-proxy |
+
+Live URL and two-world evidence are filled in after operator bootstrap + verify
+(see fleet-chezmoi `docs/runlog/` and this section's checkboxes above).
 
 ## Evidence rule
 
