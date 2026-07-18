@@ -226,7 +226,7 @@ def main() -> None:
         "ping after kill",
         room_echo,
         '"kind":"slain"',
-        "slew luminous rat",
+        "slew a glow-rat",
     )
 
     sock.close()

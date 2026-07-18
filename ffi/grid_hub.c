@@ -199,6 +199,13 @@ static void seed_local_traces(void) {
                "someone swore off the dust for the ninth time.", 0);
   trace_prepend("Saltreach", "the drowned pier", "death",
                "a runner called Mox bled out, cursing the tide.", 0);
+  /* Ambient noise the keeper can flush with gridprune. */
+  trace_prepend("Basalt Relay", "nexus", "ghost",
+               "a faint cursor blinks once and is gone.", 0);
+  trace_prepend("Basalt Relay", "market", "passage",
+               "someone passed through without leaving a name.", 0);
+  trace_prepend("Basalt Relay", "roof", "recall",
+               "a half-remembered transmission dissolves into static.", 0);
 }
 
 /* ---------- RemoteHub transport ---------- */
@@ -414,6 +421,17 @@ int hg_grid_record(const char *world, const char *node, const char *kind,
 int hg_grid_record_local_echo(const char *node, const char *kind,
                               const char *text) {
   echo_prepend(node, kind, text, now_ms());
+  return 0;
+}
+
+int hg_grid_inscribe(const char *node, const char *name, const char *msg) {
+  char text[240];
+  if (node == NULL || name == NULL || msg == NULL || msg[0] == '\0') {
+    return -1;
+  }
+  snprintf(text, sizeof(text), "%s: \"%s\"", name, msg);
+  hg_grid_record_local_echo(node, "mark", text);
+  hg_grid_record(g.world_name, node, "mark", text, now_ms());
   return 0;
 }
 
@@ -738,8 +756,8 @@ int hg_grid_fmt_travel(char *buf, size_t cap, const char *target) {
     return (int)off;
   }
   if (append(buf, cap, &off,
-            "The Grid can route you toward %s, but this world can't hand "
-            "you off mid-session yet. Reconnect there directly:\r\n"
+            "The Grid routes you toward %s. This world can't hand you off "
+            "mid-session yet -- reconnect there directly:\r\n"
             "    %s\r\n",
             rows[match].id, rows[match].url) != 0) {
     return -1;
@@ -1361,8 +1379,22 @@ int hg_grid_ledger_stats(hg_grid_ledger_row *out, size_t cap,
 
 int hg_grid_prune_ledger(int *removed) {
   if (!g.remote) {
+    int before = g.trace_count;
+    int write = 0;
+    for (int i = 0; i < g.trace_count; ++i) {
+      const char *kind = g.traces[i].kind;
+      if (strcmp(kind, "ghost") == 0 || strcmp(kind, "passage") == 0 ||
+          strcmp(kind, "recall") == 0) {
+        continue;
+      }
+      if (write != i) {
+        g.traces[write] = g.traces[i];
+      }
+      write++;
+    }
+    g.trace_count = write;
     if (removed != NULL) {
-      *removed = 0;
+      *removed = before - write;
     }
     return 0;
   }

@@ -7,11 +7,17 @@ section .rodata
 
 empty_mobs: db "[]", 0
 empty_actions: db "[]", 0
-rat_mobs: db '[{"id":"rat","name":"luminous rat"}]', 0
+rat_mobs: db '[{"id":"rat","name":"a glow-rat"}]', 0
+leech_mobs: db '[{"id":"leech","name":"a data-leech"}]', 0
+raider_mobs: db '[{"id":"raider","name":"a wastes raider"}]', 0
+trooper_mobs: db '[{"id":"trooper","name":"a Cinder Front trooper"}]', 0
+ashmonger_mobs: db '[{"id":"ashmonger","name":"the Ashmonger"}]', 0
+custodian_mobs: db '[{"id":"custodian","name":"the Custodian"}]', 0
 
 actions_nexus: db '[{"verb":"down","label":"descend into the service tunnels","kind":"move"},{"verb":"east","label":"enter the workshop","kind":"move"},{"verb":"north","label":"walk to the market","kind":"move"},{"verb":"west","label":"enter the tavern","kind":"move"}]', 0
-actions_tunnels: db '[{"verb":"attack rat","label":"attack the luminous rat","kind":"fight"},{"verb":"down","label":"descend toward the sump","kind":"move"},{"verb":"up","label":"return to the nexus","kind":"move"}]', 0
-actions_market: db '[{"verb":"defend","label":"stand with the people the Front would erase","kind":"moral","valence":"virtuous"},{"verb":"join","label":"take the Front coin and help sort the living","kind":"moral","valence":"corrupt"}]', 0
+actions_tunnels: db '[{"verb":"attack rat","label":"attack the glow-rat","kind":"fight"},{"verb":"down","label":"descend toward the sump","kind":"move"},{"verb":"up","label":"return to the nexus","kind":"move"}]', 0
+actions_market: db '[{"verb":"defend","label":"stand with the people the Front would erase","kind":"moral","valence":"virtuous"},{"verb":"join","label":"take the Front coin and help sort the living","kind":"moral","valence":"grave"},{"verb":"sell","label":"sell salvage for gold","kind":"economy"},{"verb":"steal","label":"steal from the stalls","kind":"economy","valence":"corrupt"}]', 0
+actions_tavern: db '[{"verb":"talk","label":"talk to whoever shares your room","kind":"social"},{"verb":"buy dust","label":"buy dust: 10 gold a packet (using it heals, but addicts and corrupts)","kind":"moral","valence":"corrupt"}]', 0
 actions_lock: db '[{"verb":"defend","label":"open the custody line and move people to safety","kind":"moral","valence":"virtuous"},{"verb":"join","label":"take the Front manifest and work the line","kind":"moral","valence":"corrupt"}]', 0
 actions_repeater: db '[{"verb":"witness","label":"preserve the handoff record without alteration","kind":"moral","valence":"virtuous"}]', 0
 
@@ -53,7 +59,7 @@ ROOM_STRINGS east_repeater, "east-repeater", "East Repeater", "A damaged relay p
 
 rooms:
     dq nexus_id, nexus_name, nexus_desc, nexus_exits, empty_mobs, actions_nexus
-    dq tavern_id, tavern_name, tavern_desc, tavern_exits, empty_mobs, empty_actions
+    dq tavern_id, tavern_name, tavern_desc, tavern_exits, empty_mobs, actions_tavern
     dq market_id, market_name, market_desc, market_exits, empty_mobs, actions_market
     dq holding_pit_id, holding_pit_name, holding_pit_desc, holding_pit_exits, empty_mobs, empty_actions
     dq workshop_id, workshop_name, workshop_desc, workshop_exits, empty_mobs, empty_actions
@@ -61,21 +67,21 @@ rooms:
     dq tunnels_id, tunnels_name, tunnels_desc, tunnels_exits, rat_mobs, actions_tunnels
     dq sump_id, sump_name, sump_desc, sump_exits, empty_mobs, empty_actions
     dq floodgate_id, floodgate_name, floodgate_desc, floodgate_exits, empty_mobs, empty_actions
-    dq coldrow_id, coldrow_name, coldrow_desc, coldrow_exits, empty_mobs, empty_actions
+    dq coldrow_id, coldrow_name, coldrow_desc, coldrow_exits, leech_mobs, empty_actions
     dq cooling_id, cooling_name, cooling_desc, cooling_exits, empty_mobs, empty_actions
     dq fiber_id, fiber_name, fiber_desc, fiber_exits, empty_mobs, empty_actions
-    dq corelab_id, corelab_name, corelab_desc, corelab_exits, empty_mobs, empty_actions
+    dq corelab_id, corelab_name, corelab_desc, corelab_exits, custodian_mobs, empty_actions
     dq archive_id, archive_name, archive_desc, archive_exits, empty_mobs, empty_actions
     dq dunes_id, dunes_name, dunes_desc, dunes_exits, empty_mobs, empty_actions
-    dq scorch_road_id, scorch_road_name, scorch_road_desc, scorch_road_exits, empty_mobs, empty_actions
+    dq scorch_road_id, scorch_road_name, scorch_road_desc, scorch_road_exits, raider_mobs, empty_actions
     dq waystation_id, waystation_name, waystation_desc, waystation_exits, empty_mobs, empty_actions
     dq transit_hub_id, transit_hub_name, transit_hub_desc, transit_hub_exits, empty_mobs, empty_actions
     dq checkpoint_id, checkpoint_name, checkpoint_desc, checkpoint_exits, empty_mobs, empty_actions
     dq gate_id, gate_name, gate_desc, gate_exits, empty_mobs, empty_actions
-    dq muster_id, muster_name, muster_desc, muster_exits, empty_mobs, empty_actions
+    dq muster_id, muster_name, muster_desc, muster_exits, trooper_mobs, empty_actions
     dq cells_id, cells_name, cells_desc, cells_exits, empty_mobs, empty_actions
     dq warroom_id, warroom_name, warroom_desc, warroom_exits, empty_mobs, empty_actions
-    dq dais_id, dais_name, dais_desc, dais_exits, empty_mobs, empty_actions
+    dq dais_id, dais_name, dais_desc, dais_exits, ashmonger_mobs, empty_actions
     dq relay_cut_id, relay_cut_name, relay_cut_desc, relay_cut_exits, empty_mobs, empty_actions
     dq handoff_bay_id, handoff_bay_name, handoff_bay_desc, handoff_bay_exits, empty_mobs, empty_actions
     dq custody_lock_id, custody_lock_name, custody_lock_desc, custody_lock_exits, empty_mobs, actions_lock

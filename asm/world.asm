@@ -24,7 +24,9 @@ cmd_go_prefix: db "go ", 0
 cmd_wield:     db "wield", 0
 cmd_wield_sp:  db "wield ", 0
 cmd_remove:    db "remove", 0
+cmd_remove_sp: db "remove ", 0
 cmd_unwield:   db "unwield", 0
+cmd_unwield_sp: db "unwield ", 0
 cmd_attack:    db "attack", 0
 cmd_attack_sp: db "attack ", 0
 cmd_kill:      db "kill", 0
@@ -57,11 +59,82 @@ cmd_worlds:    db "worlds", 0
 cmd_travel:    db "travel", 0
 cmd_travel_sp: db "travel ", 0
 cmd_gate:      db "gate", 0
+cmd_title:     db "title", 0
+cmd_title_sp:  db "title ", 0
+cmd_who:       db "who", 0
+cmd_free:      db "free", 0
+cmd_rescue:    db "rescue", 0
+cmd_release:   db "release", 0
+cmd_unlock:    db "unlock", 0
+cmd_liberate:  db "liberate", 0
+cmd_unchain:   db "unchain", 0
+cmd_unshackle: db "unshackle", 0
+cmd_untie:     db "untie", 0
+cmd_recall:    db "recall", 0
+cmd_home:      db "home", 0
+cmd_affects:   db "affects", 0
+cmd_inscribe:  db "inscribe", 0
+cmd_inscribe_sp: db "inscribe ", 0
+cmd_sell:       db "sell", 0
+cmd_sell_sp:    db "sell ", 0
+cmd_steal:      db "steal", 0
+cmd_sense:      db "sense", 0
+cmd_actions:    db "actions", 0
+cmd_forgive:    db "forgive", 0
+cmd_forgive_sp: db "forgive ", 0
+cmd_absolve:    db "absolve", 0
+cmd_absolve_sp: db "absolve ", 0
+cmd_pardon:     db "pardon", 0
+cmd_pardon_sp:  db "pardon ", 0
+cmd_talk:       db "talk", 0
+cmd_ask:        db "ask", 0
+cmd_buy:        db "buy", 0
+cmd_buy_sp:     db "buy ", 0
+cmd_wall:       db "wall", 0
+cmd_wall_sp:    db "wall ", 0
+cmd_tell:       db "tell", 0
+cmd_tell_sp:    db "tell ", 0
+cmd_reply:      db "reply", 0
+cmd_reply_sp:   db "reply ", 0
+cmd_yell:       db "yell", 0
+cmd_yell_sp:    db "yell ", 0
+cmd_emote:      db "emote", 0
+cmd_emote_sp:   db "emote ", 0
+cmd_mend:       db "mend", 0
+cmd_mend_sp:    db "mend ", 0
+cmd_give:       db "give", 0
+cmd_give_sp:    db "give ", 0
+cmd_cache:      db "cache", 0
+cmd_cache_sp:   db "cache ", 0
+cmd_gather:     db "gather", 0
+cmd_treat:      db "treat", 0
+cmd_gridcast:   db "gridcast", 0
+cmd_gridcast_sp: db "gridcast ", 0
+cmd_gc:         db "gc", 0
+cmd_gc_sp:      db "gc ", 0
+cmd_list:       db "list", 0
+cmd_war:        db "war", 0
+cmd_shelter:    db "shelter", 0
+cmd_saved:      db "saved", 0
+cmd_defy:       db "defy", 0
+cmd_defect:     db "defect", 0
+cmd_witness:    db "witness", 0
+cmd_witness_sp: db "witness ", 0
+cmd_remember:   db "remember", 0
+cmd_remember_sp: db "remember ", 0
+cmd_mourn:      db "mourn", 0
+cmd_mourn_sp:   db "mourn ", 0
+cmd_reckoning:  db "reckoning", 0
+cmd_conscience: db "conscience", 0
+cmd_record:     db "record", 0
+cmd_gridstats:  db "gridstats", 0
+cmd_gridprune:  db "gridprune", 0
 
 cant_move:
     db "The declared ways do not lead there.", 13, 10
 cant_move_end:
 cant_move_len: equ cant_move_end - cant_move
+position_standing: db "standing", 0
 
 extern hg_help
 extern hg_help_len
@@ -86,14 +159,47 @@ extern hg_cmd_exits
 extern hg_cmd_sleep
 extern hg_cmd_stand
 extern hg_cmd_rest
+extern hg_cmd_affects
+extern hg_cmd_inscribe
+extern hg_cmd_sell
+extern hg_cmd_steal
+extern hg_cmd_sense
+extern hg_cmd_forgive
+extern hg_cmd_look_player
+extern hg_cmd_talk
+extern hg_cmd_buy
+extern hg_cmd_wall
+extern hg_cmd_tell
+extern hg_cmd_reply
+extern hg_cmd_yell
+extern hg_cmd_emote
+extern hg_cmd_mend
+extern hg_cmd_give
+extern hg_cmd_cache
+extern hg_cmd_gather
+extern hg_cmd_treat
+extern hg_cmd_gridcast
+extern hg_cmd_list
+extern hg_cmd_war
+extern hg_cmd_shelter
+extern hg_cmd_saved
 extern hg_cmd_join
 extern hg_cmd_defend
+extern hg_cmd_defy
+extern hg_cmd_witness
+extern hg_cmd_reckoning
+extern hg_cmd_gridstats
+extern hg_cmd_gridprune
 extern hg_cmd_ping
 extern hg_cmd_world
 extern hg_cmd_listen
 extern hg_cmd_whoami
 extern hg_cmd_worlds
 extern hg_cmd_travel
+extern hg_cmd_title
+extern hg_cmd_who
+extern hg_cmd_free
+extern strcpy
 
 section .text
 
@@ -142,7 +248,7 @@ hg_world_command:
     mov edx, 5
     call prefix
     test eax, eax
-    jnz .look_mob
+    jnz .look_arg
 
     mov rdi, r14
     lea rsi, [rel cmd_go_prefix]
@@ -185,10 +291,22 @@ hg_world_command:
     test eax, eax
     jnz .remove
     mov rdi, r14
+    lea rsi, [rel cmd_remove_sp]
+    mov edx, 7
+    call prefix
+    test eax, eax
+    jnz .remove_arg
+    mov rdi, r14
     lea rsi, [rel cmd_unwield]
     call eq
     test eax, eax
     jnz .remove
+    mov rdi, r14
+    lea rsi, [rel cmd_unwield_sp]
+    mov edx, 8
+    call prefix
+    test eax, eax
+    jnz .remove_arg
 
     mov rdi, r14
     lea rsi, [rel cmd_attack]
@@ -279,6 +397,230 @@ hg_world_command:
     test eax, eax
     jnz .rest
     mov rdi, r14
+    lea rsi, [rel cmd_talk]
+    call eq
+    test eax, eax
+    jnz .talk
+    mov rdi, r14
+    lea rsi, [rel cmd_ask]
+    call eq
+    test eax, eax
+    jnz .talk
+    mov rdi, r14
+    lea rsi, [rel cmd_buy]
+    call eq
+    test eax, eax
+    jnz .buy_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_buy_sp]
+    mov edx, 4
+    call prefix
+    test eax, eax
+    jnz .buy_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_wall]
+    call eq
+    test eax, eax
+    jnz .wall_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_wall_sp]
+    mov edx, 5
+    call prefix
+    test eax, eax
+    jnz .wall_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_tell]
+    call eq
+    test eax, eax
+    jnz .tell_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_tell_sp]
+    mov edx, 5
+    call prefix
+    test eax, eax
+    jnz .tell_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_reply]
+    call eq
+    test eax, eax
+    jnz .reply_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_reply_sp]
+    mov edx, 6
+    call prefix
+    test eax, eax
+    jnz .reply_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_yell]
+    call eq
+    test eax, eax
+    jnz .yell_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_yell_sp]
+    mov edx, 5
+    call prefix
+    test eax, eax
+    jnz .yell_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_emote]
+    call eq
+    test eax, eax
+    jnz .emote_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_emote_sp]
+    mov edx, 6
+    call prefix
+    test eax, eax
+    jnz .emote_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_mend]
+    call eq
+    test eax, eax
+    jnz .mend_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_mend_sp]
+    mov edx, 5
+    call prefix
+    test eax, eax
+    jnz .mend_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_give]
+    call eq
+    test eax, eax
+    jnz .give_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_give_sp]
+    mov edx, 5
+    call prefix
+    test eax, eax
+    jnz .give_arg
+
+    mov rdi, r14
+    lea rsi, [rel cmd_gridcast]
+    call eq
+    test eax, eax
+    jnz .gridcast_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_gridcast_sp]
+    mov edx, 9
+    call prefix
+    test eax, eax
+    jnz .gridcast_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_gc]
+    call eq
+    test eax, eax
+    jnz .gridcast_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_gc_sp]
+    mov edx, 3
+    call prefix
+    test eax, eax
+    jnz .gc_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_list]
+    call eq
+    test eax, eax
+    jnz .list
+    mov rdi, r14
+    lea rsi, [rel cmd_war]
+    call eq
+    test eax, eax
+    jnz .war
+    mov rdi, r14
+    lea rsi, [rel cmd_shelter]
+    call eq
+    test eax, eax
+    jnz .shelter
+    mov rdi, r14
+    lea rsi, [rel cmd_saved]
+    call eq
+    test eax, eax
+    jnz .saved
+
+    mov rdi, r14
+    lea rsi, [rel cmd_cache]
+    call eq
+    test eax, eax
+    jnz .cache_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_cache_sp]
+    mov edx, 6
+    call prefix
+    test eax, eax
+    jnz .cache_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_gather]
+    call eq
+    test eax, eax
+    jnz .gather
+    mov rdi, r14
+    lea rsi, [rel cmd_treat]
+    call eq
+    test eax, eax
+    jnz .treat
+
+    mov rdi, r14
+    lea rsi, [rel cmd_sell]
+    call eq
+    test eax, eax
+    jnz .sell_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_sell_sp]
+    mov edx, 5
+    call prefix
+    test eax, eax
+    jnz .sell_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_steal]
+    call eq
+    test eax, eax
+    jnz .steal
+    mov rdi, r14
+    lea rsi, [rel cmd_sense]
+    call eq
+    test eax, eax
+    jnz .sense
+    mov rdi, r14
+    lea rsi, [rel cmd_actions]
+    call eq
+    test eax, eax
+    jnz .sense
+    mov rdi, r14
+    lea rsi, [rel cmd_forgive]
+    call eq
+    test eax, eax
+    jnz .forgive_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_forgive_sp]
+    mov edx, 8
+    call prefix
+    test eax, eax
+    jnz .forgive_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_absolve]
+    call eq
+    test eax, eax
+    jnz .forgive_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_absolve_sp]
+    mov edx, 8
+    call prefix
+    test eax, eax
+    jnz .forgive_arg_abs
+    mov rdi, r14
+    lea rsi, [rel cmd_pardon]
+    call eq
+    test eax, eax
+    jnz .forgive_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_pardon_sp]
+    mov edx, 7
+    call prefix
+    test eax, eax
+    jnz .forgive_arg_par
+
+    mov rdi, r14
     lea rsi, [rel cmd_join]
     call eq
     test eax, eax
@@ -293,6 +635,77 @@ hg_world_command:
     call eq
     test eax, eax
     jnz .defend
+    mov rdi, r14
+    lea rsi, [rel cmd_defy]
+    call eq
+    test eax, eax
+    jnz .defy
+    mov rdi, r14
+    lea rsi, [rel cmd_defect]
+    call eq
+    test eax, eax
+    jnz .defy
+
+    mov rdi, r14
+    lea rsi, [rel cmd_witness]
+    call eq
+    test eax, eax
+    jnz .witness_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_witness_sp]
+    mov edx, 8
+    call prefix
+    test eax, eax
+    jnz .witness_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_remember]
+    call eq
+    test eax, eax
+    jnz .witness_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_remember_sp]
+    mov edx, 9
+    call prefix
+    test eax, eax
+    jnz .witness_arg_remember
+    mov rdi, r14
+    lea rsi, [rel cmd_mourn]
+    call eq
+    test eax, eax
+    jnz .witness_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_mourn_sp]
+    mov edx, 6
+    call prefix
+    test eax, eax
+    jnz .witness_arg_mourn
+
+    mov rdi, r14
+    lea rsi, [rel cmd_reckoning]
+    call eq
+    test eax, eax
+    jnz .reckoning
+    mov rdi, r14
+    lea rsi, [rel cmd_conscience]
+    call eq
+    test eax, eax
+    jnz .reckoning
+    mov rdi, r14
+    lea rsi, [rel cmd_record]
+    call eq
+    test eax, eax
+    jnz .reckoning
+
+    mov rdi, r14
+    lea rsi, [rel cmd_gridstats]
+    call eq
+    test eax, eax
+    jnz .gridstats
+    mov rdi, r14
+    lea rsi, [rel cmd_gridprune]
+    call eq
+    test eax, eax
+    jnz .gridprune
 
     mov rdi, r14
     lea rsi, [rel cmd_ping]
@@ -366,6 +779,94 @@ hg_world_command:
     call eq
     test eax, eax
     jnz .travel_empty
+
+    mov rdi, r14
+    lea rsi, [rel cmd_title]
+    call eq
+    test eax, eax
+    jnz .title_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_title_sp]
+    mov edx, 6
+    call prefix
+    test eax, eax
+    jnz .title_arg
+
+    mov rdi, r14
+    lea rsi, [rel cmd_who]
+    call eq
+    test eax, eax
+    jnz .who
+
+    mov rdi, r14
+    lea rsi, [rel cmd_free]
+    call eq
+    test eax, eax
+    jnz .free
+    mov rdi, r14
+    lea rsi, [rel cmd_rescue]
+    call eq
+    test eax, eax
+    jnz .free
+    mov rdi, r14
+    lea rsi, [rel cmd_release]
+    call eq
+    test eax, eax
+    jnz .free
+    mov rdi, r14
+    lea rsi, [rel cmd_unlock]
+    call eq
+    test eax, eax
+    jnz .free
+    mov rdi, r14
+    lea rsi, [rel cmd_liberate]
+    call eq
+    test eax, eax
+    jnz .free
+    mov rdi, r14
+    lea rsi, [rel cmd_unchain]
+    call eq
+    test eax, eax
+    jnz .free
+    mov rdi, r14
+    lea rsi, [rel cmd_unshackle]
+    call eq
+    test eax, eax
+    jnz .free
+    mov rdi, r14
+    lea rsi, [rel cmd_untie]
+    call eq
+    test eax, eax
+    jnz .free
+
+    mov rdi, r14
+    lea rsi, [rel cmd_recall]
+    call eq
+    test eax, eax
+    jnz .recall
+    mov rdi, r14
+    lea rsi, [rel cmd_home]
+    call eq
+    test eax, eax
+    jnz .recall
+
+    mov rdi, r14
+    lea rsi, [rel cmd_affects]
+    call eq
+    test eax, eax
+    jnz .affects
+
+    mov rdi, r14
+    lea rsi, [rel cmd_inscribe]
+    call eq
+    test eax, eax
+    jnz .inscribe_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_inscribe_sp]
+    mov edx, 9
+    call prefix
+    test eax, eax
+    jnz .inscribe_arg
 
     mov rdi, r14
     lea rsi, [rel cmd_down]
@@ -469,6 +970,12 @@ hg_world_command:
     xor edx, edx
     call hg_cmd_remove
     jmp .done
+.remove_arg:
+    lea rdx, [r14 + 7]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_remove
+    jmp .done
 .attack_empty:
     mov rdi, r12
     mov rsi, r13
@@ -511,11 +1018,227 @@ hg_world_command:
     mov rsi, r13
     call hg_cmd_consider
     jmp .done
-.look_mob:
+
+
+
+.gridcast_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_gridcast
+    jmp .done
+.gridcast_arg:
+    lea rdx, [r14 + 9]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_gridcast
+    jmp .done
+.gc_arg:
+    lea rdx, [r14 + 3]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_gridcast
+    jmp .done
+.list:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_list
+    jmp .done
+.war:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_war
+    jmp .done
+.shelter:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_shelter
+    jmp .done
+.saved:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_saved
+    jmp .done
+.cache_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_cache
+    jmp .done
+.cache_arg:
+    lea rdx, [r14 + 6]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_cache
+    jmp .done
+.gather:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_gather
+    jmp .done
+.treat:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_treat
+    jmp .done
+.talk:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_talk
+    jmp .done
+.buy_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_buy
+    jmp .done
+.buy_arg:
+    lea rdx, [r14 + 4]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_buy
+    jmp .done
+.wall_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_wall
+    jmp .done
+.wall_arg:
+    lea rdx, [r14 + 5]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_wall
+    jmp .done
+.tell_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_tell
+    jmp .done
+.tell_arg:
+    lea rdx, [r14 + 5]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_tell
+    jmp .done
+.reply_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_reply
+    jmp .done
+.reply_arg:
+    lea rdx, [r14 + 6]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_reply
+    jmp .done
+.yell_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_yell
+    jmp .done
+.yell_arg:
+    lea rdx, [r14 + 5]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_yell
+    jmp .done
+.emote_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_emote
+    jmp .done
+.emote_arg:
+    lea rdx, [r14 + 6]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_emote
+    jmp .done
+.mend_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_mend
+    jmp .done
+.mend_arg:
+    lea rdx, [r14 + 5]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_mend
+    jmp .done
+.give_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_give
+    jmp .done
+.give_arg:
+    lea rdx, [r14 + 5]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_give
+    jmp .done
+.look_arg:
+    lea rdx, [r14 + 5]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_look_player
+    test eax, eax
+    jnz .done
     lea rdx, [r14 + 5]
     mov rdi, r12
     mov rsi, r13
     call hg_cmd_look_mob
+    jmp .done
+.sell_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_sell
+    jmp .done
+.sell_arg:
+    lea rdx, [r14 + 5]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_sell
+    jmp .done
+.steal:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_steal
+    jmp .done
+.sense:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_sense
+    jmp .done
+.forgive_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_forgive
+    jmp .done
+.forgive_arg:
+    lea rdx, [r14 + 8]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_forgive
+    jmp .done
+.forgive_arg_abs:
+    lea rdx, [r14 + 8]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_forgive
+    jmp .done
+.forgive_arg_par:
+    lea rdx, [r14 + 7]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_forgive
     jmp .done
 .exits:
     mov rdi, r12
@@ -537,6 +1260,23 @@ hg_world_command:
     mov rsi, r13
     call hg_cmd_rest
     jmp .done
+.affects:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_affects
+    jmp .done
+.inscribe_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_inscribe
+    jmp .done
+.inscribe_arg:
+    lea rdx, [r14 + 9]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_inscribe
+    jmp .done
 .join:
     mov rdi, r12
     mov rsi, r13
@@ -546,6 +1286,50 @@ hg_world_command:
     mov rdi, r12
     mov rsi, r13
     call hg_cmd_defend
+    jmp .done
+.defy:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_defy
+    jmp .done
+.witness_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_witness
+    jmp .done
+.witness_arg:
+    lea rdx, [r14 + 8]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_witness
+    jmp .done
+.witness_arg_remember:
+    lea rdx, [r14 + 9]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_witness
+    jmp .done
+.witness_arg_mourn:
+    lea rdx, [r14 + 6]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_witness
+    jmp .done
+.reckoning:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_reckoning
+    jmp .done
+.gridstats:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_gridstats
+    jmp .done
+.gridprune:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_gridprune
     jmp .done
 .ping_empty:
     mov rdi, r12
@@ -643,6 +1427,35 @@ hg_world_command:
     mov rsi, r13
     call hg_emit_ability
     jmp .done
+
+.title_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_title
+    jmp .done
+.title_arg:
+    lea rdx, [r14 + 6]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_title
+    jmp .done
+.who:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_who
+    jmp .done
+.free:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_free
+    jmp .done
+.recall:
+    mov qword [r12 + SESSION_ROOM], ROOM_NEXUS
+    lea rdi, [r12 + SESSION_POSITION]
+    lea rsi, [rel position_standing]
+    call strcpy wrt ..plt
+    jmp .scene
 
 .quit:
     mov qword [r12 + SESSION_CLOSE], 1

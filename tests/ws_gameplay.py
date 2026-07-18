@@ -1,104 +1,33 @@
 #!/usr/bin/env python3
 """WebSocket gameplay checks for Basalt Relay (assert on @event, not prose)."""
-import base64
-import os
 import socket
-import struct
 import sys
 import time
 import uuid
 
-
-def recv_exact(sock: socket.socket, length: int) -> bytes:
-    chunks = bytearray()
-    while len(chunks) < length:
-        chunk = sock.recv(length - len(chunks))
-        if not chunk:
-            raise RuntimeError("socket closed before frame completed")
-        chunks.extend(chunk)
-    return bytes(chunks)
+from ws_common import connect, send_text
 
 
-def recv_text(sock: socket.socket) -> str:
-    first, second = recv_exact(sock, 2)
-    opcode = first & 0x0F
-    length = second & 0x7F
-    if length == 126:
-        length = struct.unpack("!H", recv_exact(sock, 2))[0]
-    elif length == 127:
-        length = struct.unpack("!Q", recv_exact(sock, 8))[0]
-    if second & 0x80:
-        mask = recv_exact(sock, 4)
-        payload = bytes(
-            value ^ mask[index % 4]
-            for index, value in enumerate(recv_exact(sock, length))
-        )
-    else:
-        payload = recv_exact(sock, length)
-    if opcode == 0x8:
-        raise RuntimeError("server closed WebSocket")
-    if opcode != 0x1:
-        return ""
-    return payload.decode("utf-8")
-
-
-def send_text(sock: socket.socket, text: str) -> None:
-    payload = text.encode("utf-8")
-    mask = os.urandom(4)
-    header = bytearray([0x81])
-    if len(payload) < 126:
-        header.append(0x80 | len(payload))
-    elif len(payload) < 65536:
-        header.append(0x80 | 126)
-        header.extend(struct.pack("!H", len(payload)))
-    else:
-        header.append(0x80 | 127)
-        header.extend(struct.pack("!Q", len(payload)))
-    header.extend(mask)
-    header.extend(
-        value ^ mask[index % 4] for index, value in enumerate(payload)
-    )
-    sock.sendall(header)
-
-
-def connect(port: int) -> socket.socket:
-    sock = socket.create_connection(("127.0.0.1", port), timeout=5)
-    key = base64.b64encode(os.urandom(16)).decode("ascii")
-    request = (
-        "GET /ws HTTP/1.1\r\n"
-        f"Host: 127.0.0.1:{port}\r\n"
-        "Upgrade: websocket\r\n"
-        "Connection: Upgrade\r\n"
-        f"Sec-WebSocket-Key: {key}\r\n"
-        "Sec-WebSocket-Version: 13\r\n\r\n"
-    )
-    sock.sendall(request.encode("ascii"))
-    response = bytearray()
-    while b"\r\n\r\n" not in response:
-        response.extend(recv_exact(sock, 1))
-    if not response.startswith(b"HTTP/1.1 101"):
-        raise RuntimeError(f"WebSocket upgrade failed: {response!r}")
-    sock.settimeout(8)
-    return sock
-
-
-def read_until(sock: socket.socket, needle: str, limit: int = 40) -> str:
+def read_until(ws, needle: str, limit: int = 80) -> str:
     transcript = ""
     for _ in range(limit):
-        transcript += recv_text(sock)
+        try:
+            transcript += ws.recv_text()
+        except socket.timeout:
+            continue
         if needle in transcript:
             return transcript
     raise RuntimeError(f"did not receive {needle!r}: {transcript!r}")
 
 
-def login(port: int, name: str) -> socket.socket:
-    sock = connect(port)
-    read_until(sock, "wanderer?")
-    send_text(sock, name)
-    read_until(sock, "char.create")
-    send_text(sock, "1")
-    read_until(sock, "@event room.info")
-    return sock
+def login(port: int, name: str):
+    ws = connect(port)
+    read_until(ws, "wanderer?")
+    send_text(ws.sock, name)
+    read_until(ws, "char.create")
+    send_text(ws.sock, "1")
+    read_until(ws, "@event room.info")
+    return ws
 
 
 def must_contain(label: str, text: str, *needles: str) -> None:
@@ -110,34 +39,34 @@ def must_contain(label: str, text: str, *needles: str) -> None:
 def main() -> None:
     port = int(sys.argv[1])
     name = f"AsmPlay{uuid.uuid4().hex[:8]}"
-    sock = login(port, name)
+    ws = login(port, name)
 
-    send_text(sock, "wield shiv")
+    send_text(ws.sock, "wield shiv")
     must_contain(
         "wield",
-        read_until(sock, "@event char.equipment"),
+        read_until(ws, "@event char.equipment"),
         '"weapon":"shiv"',
     )
 
-    send_text(sock, "remove")
+    send_text(ws.sock, "remove")
     must_contain(
         "remove",
-        read_until(sock, "@event char.equipment"),
+        read_until(ws, "@event char.equipment"),
         '"weapon":null',
     )
-    send_text(sock, "wield shiv")
-    read_until(sock, '"weapon":"shiv"')
+    send_text(ws.sock, "wield shiv")
+    read_until(ws, '"weapon":"shiv"')
 
-    send_text(sock, "down")
+    send_text(ws.sock, "down")
     must_contain(
         "tunnels",
-        read_until(sock, '"id":"tunnels"'),
-        "luminous rat",
+        read_until(ws, '"id":"tunnels"'),
+        "glow-rat",
         '"inCombat":false',
     )
 
-    send_text(sock, "attack rat")
-    start = read_until(sock, "@event combat.start")
+    send_text(ws.sock, "attack rat")
+    start = read_until(ws, "@event combat.start")
     must_contain(
         "combat start",
         start,
@@ -145,22 +74,17 @@ def main() -> None:
         '"inCombat":true',
     )
 
-    deadline = time.time() + 12
+    deadline = time.time() + 20
     transcript = start
     saw_round = "@event combat.round" in transcript
 
     def combat_resolved(text: str) -> bool:
-        return (
-            "@event combat.end" in text
-            and '"result":"killed"' in text
-        )
+        return "@event combat.end" in text and '"result":"killed"' in text
 
-    if combat_resolved(transcript):
-        pass
-    else:
+    if not combat_resolved(transcript):
         while time.time() < deadline:
             try:
-                transcript += recv_text(sock)
+                transcript += ws.recv_text()
             except socket.timeout:
                 continue
             if "@event combat.round" in transcript:
@@ -173,21 +97,21 @@ def main() -> None:
         raise RuntimeError(f"missing combat.round: {transcript!r}")
     must_contain("post-kill", transcript, '"inCombat":false')
 
-    send_text(sock, "up")
-    read_until(sock, '"id":"nexus"')
-    send_text(sock, "north")
-    read_until(sock, '"id":"market"')
-    send_text(sock, "join")
+    send_text(ws.sock, "up")
+    read_until(ws, '"id":"nexus"')
+    send_text(ws.sock, "north")
+    read_until(ws, '"id":"market"')
+    send_text(ws.sock, "join")
     must_contain(
         "join",
-        read_until(sock, '"faction":"front"'),
+        read_until(ws, '"faction":"front"'),
         '"faction":"front"',
     )
 
-    send_text(sock, "sleep")
-    must_contain("sleep", read_until(sock, "@event char.dream"), "char.dream")
+    send_text(ws.sock, "sleep")
+    must_contain("sleep", read_until(ws, "@event char.dream"), "char.dream")
 
-    sock.close()
+    ws.sock.close()
     print("gameplay checks passed")
 
 

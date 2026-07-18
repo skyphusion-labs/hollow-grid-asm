@@ -44,6 +44,8 @@ extern hg_invalid_race
 extern hg_invalid_race_len
 extern hg_ws_request_write
 extern hg_ws_write
+extern hg_combat_tick_session
+extern hg_now_ms
 extern memcpy
 extern memset
 extern strcpy
@@ -99,6 +101,27 @@ hg_session_queue:
     pop r15
     pop r14
     pop r13
+    pop r12
+    ret
+
+; Ask lws to drain SESSION_OUT on WRITEABLE. Never call hg_ws_write here:
+; writing outside LWS_CALLBACK_SERVER_WRITEABLE (or via raw send on the fd)
+; desyncs the poll loop and stalls the service timeout.
+global hg_session_flush
+hg_session_flush:
+    push r12
+    sub rsp, 8
+    mov r12, rdi
+    test r12, r12
+    jz .done
+    cmp qword [r12 + SESSION_OUT_LEN], 0
+    je .done
+    mov rdi, [r12 + SESSION_WSI]
+    test rdi, rdi
+    jz .done
+    call hg_ws_request_write wrt ..plt
+.done:
+    add rsp, 8
     pop r12
     ret
 
@@ -170,6 +193,7 @@ hg_app_callback:
     xor esi, esi
     mov edx, SESSION_SIZE
     call memset wrt ..plt
+    mov [r13 + SESSION_WSI], r12
     mov qword [r13 + SESSION_STATE], HG_LOGIN_NAME
     mov qword [r13 + SESSION_ROOM], ROOM_NEXUS
     mov qword [r13 + SESSION_HP], 30
@@ -182,7 +206,7 @@ hg_app_callback:
     lea rdi, [r13 + SESSION_POSITION]
     lea rsi, [rel position_standing]
     call strcpy wrt ..plt
-    mov qword [r13 + SESSION_INVENTORY_COUNT], 1
+    mov qword [r13 + SESSION_INV_COUNT], 1
     lea rdi, [r13 + SESSION_INVENTORY]
     lea rsi, [rel item_shiv]
     call strcpy wrt ..plt
@@ -194,6 +218,7 @@ hg_app_callback:
     jmp .ok
 
 .receive:
+    mov [r13 + SESSION_WSI], r12
     cmp r15, 255
     jbe .copy_input
     mov r15, 255
@@ -364,7 +389,11 @@ hg_app_callback:
     jz .maybe_close
     mov rdi, r12
     lea rsi, [r13 + SESSION_OUT]
+    ; rdx already holds length (3rd arg)
     call hg_ws_write wrt ..plt
+    ; 0 = fully sent (clear). nonzero = retry later (keep OUT).
+    test eax, eax
+    jnz .maybe_close
     mov qword [r13 + SESSION_OUT_LEN], 0
 .maybe_close:
     cmp qword [r13 + SESSION_CLOSE], 0

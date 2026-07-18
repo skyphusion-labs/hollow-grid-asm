@@ -35,6 +35,8 @@ int hg_grid_record(const char *world, const char *node, const char *kind,
  * so ping never depends on hub reachability. */
 int hg_grid_record_local_echo(const char *node, const char *kind,
                               const char *text);
+/* Player-left mark on a node (inscribe). */
+int hg_grid_inscribe(const char *node, const char *name, const char *msg);
 
 int hg_grid_record_fallen(const char *world, const char *name,
                           const char *room, long long at_ms);

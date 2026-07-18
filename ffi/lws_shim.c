@@ -1,3 +1,4 @@
+#define _DEFAULT_SOURCE
 #include <libwebsockets.h>
 
 #include <signal.h>
@@ -11,6 +12,7 @@
 #endif
 
 #include "hg_grid.h"
+#include "hg_session.h"
 
 enum hg_event {
   HG_EVT_CONNECTED = 1,
@@ -23,63 +25,120 @@ extern size_t hg_app_session_size(void);
 extern int hg_app_callback(void *wsi, int event, void *session,
                            const unsigned char *input, size_t length);
 extern void hg_heartbeat(long long now_ms);
-
-int hg_format_vitals(char *buf, size_t cap, long hp, long max_hp, long level,
-                     long xp, long gold, const char *room, int in_combat,
-                     const char *position) {
-  return snprintf(
-      buf, cap,
-      "@event char.vitals "
-      "{\"hp\":%ld,\"maxHp\":%ld,\"level\":%ld,\"xp\":%ld,\"gold\":%ld,"
-      "\"room\":\"%s\",\"inCombat\":%s,\"poisoned\":false,"
-      "\"position\":\"%s\"}\r\n",
-      hp, max_hp, level, xp, gold, room, in_combat ? "true" : "false",
-      position);
-}
-
-int hg_format_affects(char *buf, size_t cap, long morality, long addiction,
-                      const char *faction, const char *race, int ashsworn) {
-  return snprintf(
-      buf, cap,
-      "@event char.affects "
-      "{\"morality\":%ld,\"addiction\":%ld,\"faction\":\"%s\","
-      "\"resisted\":false,\"race\":\"%s\",\"ashsworn\":%s}\r\n",
-      morality, addiction, faction, race, ashsworn ? "true" : "false");
-}
-
-int hg_format_combat_round(char *buf, size_t cap, long mob_hp, long player_dmg,
-                           long mob_dmg, long hp) {
-  return snprintf(buf, cap,
-                  "@event combat.round "
-                  "{\"mob\":\"rat\",\"mobHp\":%ld,\"mobMaxHp\":12,"
-                  "\"playerDmg\":%ld,\"mobDmg\":%ld,\"hp\":%ld}\r\n",
-                  mob_hp, player_dmg, mob_dmg, hp);
-}
-
-int hg_format_world_state(char *buf, size_t cap, long tick,
-                          const char *phase) {
-  return snprintf(buf, cap,
-                  "@event world.state "
-                  "{\"tick\":%ld,\"phase\":\"%s\",\"weather\":\"clear\"}\r\n",
-                  tick, phase);
-}
+extern void *hg_session_at(int index);
+extern void hg_combat_round(void *session, void *wsi);
+extern long long hg_now_ms(void);
+extern void hg_emit_vitals_now(void *session, const char *room_id);
+extern const char *hg_room_id_cstr(long long room);
 
 static volatile sig_atomic_t stopped;
 static const char *active_world = "Basalt Relay";
-
-static long long hg_now_ms(void) {
-#if defined(__linux__)
-  struct timeval tv;
-  if (gettimeofday(&tv, NULL) == 0) {
-    return (long long)tv.tv_sec * 1000LL + (long long)tv.tv_usec / 1000LL;
-  }
-#endif
-  return (long long)time(NULL) * 1000LL;
-}
+static struct lws_context *g_context;
 
 static void stop_server(int signal_number) {
   (void)signal_number;
   stopped = 1;
+  if (g_context != NULL) {
+    lws_cancel_service(g_context);
+  }
+}
+
+/* Wake stuck lws_service waits. After combat.start, the library timeout often
+ * stops returning until socket traffic arrives; combat rounds then never drain.
+ * A 50ms ITIMER_REAL + lws_cancel_service keeps the cadence alive. */
+static void service_watchdog(int signal_number) {
+  (void)signal_number;
+  if (g_context != NULL) {
+    lws_cancel_service(g_context);
+  }
+}
+
+/* Called from asm at combat start: arm first swing for +2000ms so smoke can
+ * observe inCombat and clear its event log before rounds arrive. */
+void hg_combat_arm(void *session, void *wsi) {
+  if (session == NULL) {
+    return;
+  }
+  long long now = hg_now_ms();
+  hg_s_set_i64(session, HG_SESSION_LAST_TICK, now + 2000);
+  if (wsi != NULL) {
+    *(void **)((unsigned char *)session + HG_SESSION_WSI) = wsi;
+  }
+  if (g_context != NULL) {
+    lws_cancel_service(g_context);
+  }
+}
+
+
+/* Resting regen on the living-world beat (same 2s cadence as Go). Owned here
+ * so idle recv waits cannot starve asm tick_session. */
+static void hg_rest_service(long long now_ms) {
+  static long long last_rest_ms;
+  if (last_rest_ms != 0 && now_ms - last_rest_ms < 2000) {
+    return;
+  }
+  last_rest_ms = now_ms;
+  for (int i = 0; i < HG_MAX_SESSIONS; i++) {
+    unsigned char *session = (unsigned char *)hg_session_at(i);
+    if (session == NULL) {
+      continue;
+    }
+    if (hg_s_i64(session, HG_SESSION_IN_COMBAT)) {
+      continue;
+    }
+    const char *pos = hg_s_str(session, HG_SESSION_POSITION);
+    if (pos == NULL || strcmp(pos, "resting") != 0) {
+      continue;
+    }
+    long long hp = hg_s_i64(session, HG_SESSION_HP);
+    long long max_hp = hg_s_i64(session, HG_SESSION_MAX_HP);
+    if (hp >= max_hp) {
+      continue;
+    }
+    hp += 2;
+    if (hp > max_hp) {
+      hp = max_hp;
+    }
+    hg_s_set_i64(session, HG_SESSION_HP, hp);
+    long long room = hg_s_i64(session, HG_SESSION_ROOM);
+    const char *rid = hg_room_id_cstr(room);
+    hg_emit_vitals_now(session, rid);
+    struct lws *wsi = *(struct lws **)(session + HG_SESSION_WSI);
+    if (wsi != NULL) {
+      lws_callback_on_writable(wsi);
+    }
+  }
+}
+
+/* One swing per due beat. Never nest lws_service here -- nested zero-timeout
+ * pumps hang after attack. Drain only via WRITEABLE on the outer service. */
+static void hg_combat_service(long long now_ms) {
+  for (int i = 0; i < HG_MAX_SESSIONS; i++) {
+    unsigned char *session = (unsigned char *)hg_session_at(i);
+    if (session == NULL) {
+      continue;
+    }
+    if (!hg_s_i64(session, HG_SESSION_IN_COMBAT)) {
+      continue;
+    }
+    long long last = hg_s_i64(session, HG_SESSION_LAST_TICK);
+    struct lws *wsi = *(struct lws **)(session + HG_SESSION_WSI);
+    if (wsi == NULL) {
+      continue;
+    }
+    if (last == 0) {
+      hg_s_set_i64(session, HG_SESSION_LAST_TICK, now_ms + 2000);
+      continue;
+    }
+    if (now_ms < last) {
+      continue;
+    }
+    hg_combat_round(session, wsi);
+    lws_callback_on_writable(wsi);
+    if (hg_s_i64(session, HG_SESSION_IN_COMBAT)) {
+      hg_s_set_i64(session, HG_SESSION_LAST_TICK, now_ms + 2000);
+    }
+  }
 }
 
 static int send_http(struct lws *wsi, unsigned int status,
@@ -172,19 +231,36 @@ static int callback(struct lws *wsi, enum lws_callback_reasons reason,
 }
 
 void hg_ws_request_write(void *socket) {
+  if (socket == NULL) {
+    return;
+  }
   lws_callback_on_writable((struct lws *)socket);
 }
 
+/* Only safe from LWS_CALLBACK_SERVER_WRITEABLE. */
 int hg_ws_write(void *socket, const unsigned char *data, size_t length) {
-  unsigned char *buffer = malloc(LWS_PRE + length);
-  if (buffer == NULL) {
+  struct lws *wsi = (struct lws *)socket;
+  unsigned char *buf;
+  int n;
+
+  if (wsi == NULL || data == NULL || length == 0) {
     return -1;
   }
-  memcpy(buffer + LWS_PRE, data, length);
-  int written = lws_write((struct lws *)socket, buffer + LWS_PRE, length,
-                          LWS_WRITE_TEXT);
-  free(buffer);
-  return written == (int)length ? 0 : -1;
+  buf = malloc(LWS_PRE + length);
+  if (buf == NULL) {
+    return -1;
+  }
+  memcpy(buf + LWS_PRE, data, length);
+  n = lws_write(wsi, buf + LWS_PRE, length, LWS_WRITE_TEXT);
+  free(buf);
+  if (n < 0) {
+    return -1;
+  }
+  if ((size_t)n < length) {
+    lws_callback_on_writable(wsi);
+    return 1;
+  }
+  return 0;
 }
 
 int hg_lws_run(const char *host, int port, const char *world_name) {
@@ -193,6 +269,8 @@ int hg_lws_run(const char *host, int port, const char *world_name) {
       LWS_PROTOCOL_LIST_TERM,
   };
   struct lws_context_creation_info info;
+  struct itimerval tick;
+
   memset(&info, 0, sizeof(info));
   info.port = port;
   info.iface = host;
@@ -203,25 +281,36 @@ int hg_lws_run(const char *host, int port, const char *world_name) {
   stopped = 0;
   signal(SIGINT, stop_server);
   signal(SIGTERM, stop_server);
+  signal(SIGALRM, service_watchdog);
   lws_set_log_level(LLL_ERR | LLL_WARN, NULL);
 
-  struct lws_context *context = lws_create_context(&info);
-  if (context == NULL) {
+  g_context = lws_create_context(&info);
+  if (g_context == NULL) {
     fprintf(stderr, "failed to create libwebsockets context\n");
     return 1;
   }
   if (hg_grid_remote()) {
-    /* Best-effort: federation never blocks bringing the world up. */
     hg_grid_register_self();
   }
+
+  memset(&tick, 0, sizeof(tick));
+  tick.it_value.tv_usec = 50000;
+  tick.it_interval.tv_usec = 50000;
+  setitimer(ITIMER_REAL, &tick, NULL);
+
   fprintf(stdout, "%s listening on %s:%d\n", world_name, host, port);
-  while (!stopped && lws_service(context, 100) >= 0) {
+  fflush(stdout);
+  /* Single outer service call. Do not nest lws_service. */
+  while (!stopped && lws_service(g_context, 1000) >= 0) {
     long long tick_now = hg_now_ms();
     hg_heartbeat(tick_now);
+    hg_combat_service(tick_now);
+    hg_rest_service(tick_now);
     hg_grid_federation_tick(tick_now);
-    lws_service(context, 0);
   }
-  lws_context_destroy(context);
+  memset(&tick, 0, sizeof(tick));
+  setitimer(ITIMER_REAL, &tick, NULL);
+  lws_context_destroy(g_context);
+  g_context = NULL;
   return 0;
 }
-

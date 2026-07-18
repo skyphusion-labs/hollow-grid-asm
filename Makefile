@@ -21,13 +21,13 @@ ASM_SRC := \
 	asm/session.asm \
 	asm/store.asm \
 	asm/world.asm
-C_SRC := ffi/lws_shim.c ffi/grid_hub.c
+C_SRC := ffi/lws_shim.c ffi/grid_hub.c ffi/format.c ffi/social.c
 
 ASM_OBJ := $(ASM_SRC:%=$(OBJ)/%.o)
 C_OBJ := $(C_SRC:%=$(OBJ)/%.o)
 OBJS := $(ASM_OBJ) $(C_OBJ)
 
-.PHONY: all check clean
+.PHONY: all check smoke clean
 
 all: $(BIN)
 
@@ -45,6 +45,11 @@ $(BIN): $(OBJS)
 check: $(BIN)
 	./$(BIN) --help >/dev/null
 	./tests/foundation.sh ./$(BIN)
+
+# Blocking upstream smoke.mjs (Phase 12 SKIP when DUSTFALL_URL unreachable).
+smoke: $(BIN)
+	chmod +x ./tests/smoke.sh
+	./tests/smoke.sh ./$(BIN)
 
 clean:
 	rm -rf $(BUILD)
