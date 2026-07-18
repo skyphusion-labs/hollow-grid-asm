@@ -126,17 +126,7 @@ def main() -> None:
         "Basalt Relay",
     )
 
-    # travel to a seeded world shows its reconnect URL and a grid.travel event.
-    send_text(sock, "travel Dustfall")
-    travel = read_until(sock, "@event grid.travel")
-    must_contain(
-        "travel",
-        travel,
-        '"to":"Dustfall"',
-        "dustfall.skyphusion.org",
-    )
-
-    # travel with no target and gate both fall back to the worlds listing.
+    # Travel with no target and gate both fall back to the worlds listing.
     send_text(sock, "gate")
     read_until(sock, "@event grid.worlds")
 
@@ -228,6 +218,26 @@ def main() -> None:
         '"kind":"slain"',
         "slew a glow-rat",
     )
+
+    # A successful handoff is terminal: emit the destination, then close so a
+    # client can reconnect there immediately.
+    send_text(sock, "travel Dustfall")
+    travel = read_until(sock, "@event grid.travel")
+    must_contain(
+        "travel",
+        travel,
+        '"to":"Dustfall"',
+        "dustfall.skyphusion.org",
+    )
+    for _ in range(20):
+        try:
+            recv_text(sock)
+        except socket.timeout:
+            continue
+        except RuntimeError:
+            break
+    else:
+        raise RuntimeError("travel did not close the WebSocket")
 
     sock.close()
     print("federation checks passed")

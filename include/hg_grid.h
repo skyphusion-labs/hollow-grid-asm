@@ -83,7 +83,8 @@ int hg_grid_fmt_listen(char *buf, size_t cap);
 int hg_grid_fmt_ping_echo(char *buf, size_t cap, const char *room_id);
 int hg_grid_fmt_ping_all(char *buf, size_t cap);
 int hg_grid_fmt_worlds(char *buf, size_t cap);
-int hg_grid_fmt_travel(char *buf, size_t cap, const char *target);
+int hg_grid_fmt_travel(char *buf, size_t cap, const char *target,
+                       int *out_handoff);
 int hg_grid_fmt_whoami(char *buf, size_t cap, const hg_grid_identity_ctx *ctx);
 
 /* Remaining RPC surface (docs/PLAN.md Phase 3): supported by this client so a
