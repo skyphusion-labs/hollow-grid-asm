@@ -1060,7 +1060,6 @@ void hg_cmd_treat_c(void *session) {
 /* Cage/transit/holding-pit refill clocks (ms since epoch). */
 static long long g_cells_ready_at;
 static long long g_transit_ready_at;
-static int g_holding_freed; /* once per process for simplicity */
 
 void hg_cmd_gridcast_c(void *session, const char *arg) {
   if (arg == NULL) {
@@ -1186,13 +1185,12 @@ void hg_cmd_free_c(void *session) {
   long long room = hg_s_i64(session, HG_SESSION_ROOM);
   long long now = hg_now_ms();
   if (room == 3) { /* holding_pit -- allow free without warden for smoke path */
-    if (g_holding_freed) {
+    if (inv_find_slot(session, "antidote") >= 0) {
       hg_queue_line(session,
                     "The maiden smiles weakly. \"You already carry my vial. Use "
                     "it well.\"");
       return;
     }
-    g_holding_freed = 1;
     inv_add(session, "antidote");
     hg_s_set_i64(session, HG_SESSION_MORALITY,
                  hg_s_i64(session, HG_SESSION_MORALITY) + 12);
