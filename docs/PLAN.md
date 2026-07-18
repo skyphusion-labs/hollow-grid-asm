@@ -1,27 +1,27 @@
 # Foundation plan
 
-Basalt Relay is in the executable foundation phase. The linux/amd64 image,
-health endpoints, minimal WebSocket login, race menu, opening scene, and basic
-command dispatch are verified. Persistence, complete gameplay, conformance,
-federation, release, and deployment are not yet claimed.
+Basalt Relay is in the standalone world phase. The linux/amd64 image, health
+endpoints, WebSocket login, race menu, atomic persistence, character resume,
+canonical map, Relay Cut, and declared movement are verified. Complete
+gameplay, conformance, federation, release, and deployment are not yet claimed.
 
 ## Phase 0: build and ABI foundation
 
 - [x] Establish reproducible NASM and x86-64 Linux linking targets
 - [x] Define and test the System V AMD64 boundary between NASM and the minimal C
       libwebsockets shim
-- [ ] Add bounded buffers, allocation ownership rules, and callback lifetime
-      tests
+- [x] Add bounded session/input/output buffers and callback lifetime smoke tests
 - [x] Serve `/health`, `/health/deep`, and `/ws`
 - [x] Implement UTF-8 text input and CRLF output
-- [ ] Complete login, named race selection, persistence-backed resume, and
+- [x] Complete login, named race selection, persistence-backed resume, and
       dynamic initial `@event` framing
 
 ## Phase 1: standalone world
 
-- [ ] Implement canonical room anchors and Basalt Relay's east-from-`roof`
+- [x] Implement canonical room anchors and Basalt Relay's east-from-`roof`
       Relay Cut graft
-- [ ] Implement room views, actions, movement, identity, and persistence
+- [x] Implement room views, actions, declared movement, and persistence
+- [ ] Implement complete identity/status command output
 - [ ] Implement items, equipment, economy, combat, death, and ticks
 - [ ] Implement multiplayer communication and presence
 - [ ] Implement the canonical moral arc, rescue, remembrance, and reckoning

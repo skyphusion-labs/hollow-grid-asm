@@ -20,6 +20,20 @@ welcome:
 welcome_end:
 welcome_len: equ welcome_end - welcome
 
+resumed:
+    db "The custody ledger returns your prior record.", 13, 10
+resumed_end:
+resumed_len: equ resumed_end - resumed
+
+store_failed:
+    db "The custody ledger could not be read. Try again.", 13, 10
+store_failed_end:
+store_failed_len: equ store_failed_end - store_failed
+
+faction_none: db "none", 0
+position_standing: db "standing", 0
+item_shiv: db "shiv", 0
+
 extern hg_banner
 extern hg_banner_len
 extern hg_race_menu
@@ -33,8 +47,11 @@ extern hg_ws_write
 extern memcpy
 extern memset
 extern strcpy
+extern strcasecmp
 extern hg_emit_scene
 extern hg_world_command
+extern hg_store_load
+extern hg_store_save
 
 section .text
 
@@ -129,7 +146,8 @@ hg_app_callback:
     push r13
     push r14
     push r15
-    sub rsp, 256
+    push rbx
+    sub rsp, 264
     mov r12, rdi
     mov r13, rdx
     mov r14, rcx
@@ -156,6 +174,16 @@ hg_app_callback:
     mov qword [r13 + SESSION_MAX_HP], 30
     mov qword [r13 + SESSION_LEVEL], 1
     mov qword [r13 + SESSION_GOLD], 20
+    lea rdi, [r13 + SESSION_FACTION]
+    lea rsi, [rel faction_none]
+    call strcpy wrt ..plt
+    lea rdi, [r13 + SESSION_POSITION]
+    lea rsi, [rel position_standing]
+    call strcpy wrt ..plt
+    mov qword [r13 + SESSION_INVENTORY_COUNT], 1
+    lea rdi, [r13 + SESSION_INVENTORY]
+    lea rsi, [rel item_shiv]
+    call strcpy wrt ..plt
     mov rdi, r13
     mov rsi, r12
     lea rdx, [rel hg_banner]
@@ -236,6 +264,12 @@ hg_app_callback:
     mov rdx, r15
     call memcpy wrt ..plt
     mov byte [r13 + SESSION_NAME + r15], 0
+    mov rdi, r13
+    call hg_store_load
+    cmp eax, 1
+    je .resume
+    test eax, eax
+    js .load_failed
     mov qword [r13 + SESSION_STATE], HG_LOGIN_RACE
     mov rdi, r13
     mov rsi, r12
@@ -244,17 +278,55 @@ hg_app_callback:
     call hg_session_queue
     jmp .ok
 
+.resume:
+    mov qword [r13 + SESSION_STATE], HG_LOGIN_PLAY
+    mov rdi, r13
+    mov rsi, r12
+    lea rdx, [rel resumed]
+    mov ecx, resumed_len
+    call hg_session_queue
+    mov rdi, r13
+    mov rsi, r12
+    call hg_emit_scene
+    jmp .ok
+
+.load_failed:
+    mov rdi, r13
+    mov rsi, r12
+    lea rdx, [rel store_failed]
+    mov ecx, store_failed_len
+    call hg_session_queue
+    jmp .ok
+
 .race:
     cmp r15, 1
-    jne .bad_race
+    jne .race_name
     movzx eax, byte [r14]
     sub eax, '1'
     cmp eax, 6
-    ja .bad_race
+    jbe .race_chosen
+.race_name:
+    xor ebx, ebx
+.race_name_loop:
+    cmp ebx, 7
+    jae .bad_race
+    lea rdx, [rel race_table]
+    mov rdi, r14
+    mov rsi, [rdx + rbx * 8]
+    call strcasecmp wrt ..plt
+    test eax, eax
+    jz .race_name_found
+    inc ebx
+    jmp .race_name_loop
+.race_name_found:
+    mov eax, ebx
+.race_chosen:
     lea rdx, [rel race_table]
     mov rsi, [rdx + rax * 8]
     lea rdi, [r13 + SESSION_RACE]
     call strcpy wrt ..plt
+    mov rdi, r13
+    call hg_store_save
     mov qword [r13 + SESSION_STATE], HG_LOGIN_PLAY
     mov rdi, r13
     mov rsi, r12
@@ -293,12 +365,18 @@ hg_app_callback:
     jmp .return
 
 .closed:
+    cmp qword [r13 + SESSION_STATE], HG_LOGIN_PLAY
+    jne .clear_closed
+    mov rdi, r13
+    call hg_store_save
+.clear_closed:
     mov qword [r13 + SESSION_OUT_LEN], 0
 
 .ok:
     xor eax, eax
 .return:
-    add rsp, 256
+    add rsp, 264
+    pop rbx
     pop r15
     pop r14
     pop r13

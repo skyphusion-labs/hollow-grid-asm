@@ -16,7 +16,9 @@ ASM_SRC := \
 	asm/main.asm \
 	asm/content.asm \
 	asm/event.asm \
+	asm/rooms.asm \
 	asm/session.asm \
+	asm/store.asm \
 	asm/world.asm
 C_SRC := ffi/lws_shim.c
 

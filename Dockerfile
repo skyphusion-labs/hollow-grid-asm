@@ -3,7 +3,7 @@
 FROM ubuntu:24.04 AS build
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
-      build-essential nasm pkg-config curl \
+      build-essential nasm pkg-config curl python3 \
       libcjson-dev libwebsockets-dev libcurl4-openssl-dev libssl-dev \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /src
