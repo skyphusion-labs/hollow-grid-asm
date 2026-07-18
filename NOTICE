@@ -1,0 +1,12 @@
+hollow-grid-asm is licensed under AGPL-3.0-only. See LICENSE.
+
+Copyright (C) 2026 Conrad Rockenhaus
+
+A labor of love, given freely: use it, learn from it, self-host it, and build
+on it. If you modify it and provide network access, the AGPL requires an
+opportunity for those users to receive the corresponding source.
+
+hollow-grid-asm is the x86-64 NASM world-server port of The Hollow Grid. It
+speaks the same language-agnostic protocol as the reference implementation.
+Sibling implementation references include hollow-grid-c, hollow-grid-go, and
+hollow-grid-py.
