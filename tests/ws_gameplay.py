@@ -112,6 +112,27 @@ def main() -> None:
     must_contain("sleep", read_until(ws, "@event char.dream"), "char.dream")
 
     ws.sock.close()
+
+    # Holding-pit rescue is per character, not once per server process.
+    for index in range(2):
+        rescuer_name = f"AsmRescue{index}{uuid.uuid4().hex[:6]}"
+        rescuer = login(port, rescuer_name)
+        send_text(rescuer.sock, "north")
+        read_until(rescuer, '"id":"market"')
+        send_text(rescuer.sock, "north")
+        read_until(rescuer, '"id":"holding_pit"')
+        send_text(rescuer.sock, "free")
+        rescued = read_until(rescuer, "@event char.affects")
+        must_contain(
+            f"holding rescue {index + 1}",
+            rescued,
+            "@event grid.rescued",
+            f'"savedBy":"{rescuer_name}"',
+            '"freed":["Mira"]',
+            '"morality":12',
+        )
+        rescuer.sock.close()
+
     print("gameplay checks passed")
 
 
