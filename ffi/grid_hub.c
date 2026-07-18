@@ -700,7 +700,11 @@ int hg_grid_fmt_worlds(char *buf, size_t cap) {
   return (int)off;
 }
 
-int hg_grid_fmt_travel(char *buf, size_t cap, const char *target) {
+int hg_grid_fmt_travel(char *buf, size_t cap, const char *target,
+                       int *out_handoff) {
+  if (out_handoff != NULL) {
+    *out_handoff = 0;
+  }
   if (target == NULL || target[0] == '\0') {
     return hg_grid_fmt_worlds(buf, cap);
   }
@@ -757,8 +761,8 @@ int hg_grid_fmt_travel(char *buf, size_t cap, const char *target) {
     return (int)off;
   }
   if (append(buf, cap, &off,
-            "The Grid routes you toward %s. This world can't hand you off "
-            "mid-session yet -- reconnect there directly:\r\n"
+            "The Grid routes you toward %s. Reconnect there and your canonical "
+            "character follows:\r\n"
             "    %s\r\n",
             rows[match].id, rows[match].url) != 0) {
     return -1;
@@ -770,6 +774,9 @@ int hg_grid_fmt_travel(char *buf, size_t cap, const char *target) {
   if (append(buf, cap, &off, "@event grid.travel {\"to\":\"%s\",\"url\":\"%s\"}\r\n",
             idesc, udesc) != 0) {
     return -1;
+  }
+  if (out_handoff != NULL) {
+    *out_handoff = 1;
   }
   return (int)off;
 }

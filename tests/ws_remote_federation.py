@@ -79,7 +79,18 @@ class HubHandler(BaseHTTPRequestHandler):
                 }
             ]
         elif method == "listWorlds":
-            result = []
+            result = [
+                {
+                    "id": "Basalt Relay",
+                    "url": f"ws://127.0.0.1:{os.environ.get('HG_REMOTE_TEST_PORT', '18794')}/ws",
+                    "lastSeen": int(time.time() * 1000),
+                },
+                {
+                    "id": "Dustfall",
+                    "url": "wss://dustfall.example/ws",
+                    "lastSeen": int(time.time() * 1000),
+                },
+            ]
         elif method == "castsSince":
             result = []
         elif method == "ledgerStats":
@@ -166,6 +177,22 @@ def main() -> None:
                 or '"here":false' not in roster
             ):
                 raise RuntimeError(f"remote who omitted federated presence: {roster}")
+            send_text(ws.sock, "travel Dustfall")
+            handoff = read_until(ws, "@event grid.travel")
+            if (
+                '"to":"Dustfall"' not in handoff
+                or '"url":"wss://dustfall.example/ws"' not in handoff
+            ):
+                raise RuntimeError(f"remote travel omitted handoff: {handoff}")
+            for _ in range(20):
+                try:
+                    ws.recv_text()
+                except socket.timeout:
+                    continue
+                except RuntimeError:
+                    break
+            else:
+                raise RuntimeError("remote travel did not close the WebSocket")
             ws.sock.close()
 
             fresh = connect(mud_port)

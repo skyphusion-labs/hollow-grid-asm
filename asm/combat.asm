@@ -1437,17 +1437,18 @@ hg_cmd_worlds:
     add rsp, 3080
     ret
 
-; travel / gate (rdx=target, or NULL to just list worlds): shows the
-; destination and its reconnect URL. No mid-session handoff yet (Phase 3
-; only lists destinations; see docs/PLAN.md).
+; travel / gate (rdx=target, or NULL to just list worlds): emits the
+; destination handoff, then closes after the queued event is written.
 hg_cmd_travel:
     call setup_cmd
     push r14
     mov r14, rdx
-    sub rsp, 3072
+    sub rsp, 3088
+    mov dword [rsp + 3072], 0
     mov rdi, rsp
     mov esi, 3072
     mov rdx, r14
+    lea rcx, [rsp + 3072]
     call hg_grid_fmt_travel wrt ..plt
     cmp eax, 0
     jl .done
@@ -1456,8 +1457,11 @@ hg_cmd_travel:
     mov rdx, rsp
     mov ecx, eax
     call queue_bytes
+    cmp dword [rsp + 3072], 0
+    je .done
+    mov qword [r12 + SESSION_CLOSE], 1
 .done:
-    add rsp, 3072
+    add rsp, 3088
     pop r14
     ret
 
