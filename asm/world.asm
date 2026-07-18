@@ -5,6 +5,7 @@ section .rodata
 
 cmd_look:      db "look", 0
 cmd_l:         db "l", 0
+cmd_look_sp:   db "look ", 0
 cmd_down:      db "down", 0
 cmd_d:         db "d", 0
 cmd_up:        db "up", 0
@@ -20,6 +21,34 @@ cmd_ability:   db "ability", 0
 cmd_trait:     db "trait", 0
 cmd_quit:      db "quit", 0
 cmd_go_prefix: db "go ", 0
+cmd_wield:     db "wield", 0
+cmd_wield_sp:  db "wield ", 0
+cmd_remove:    db "remove", 0
+cmd_unwield:   db "unwield", 0
+cmd_attack:    db "attack", 0
+cmd_attack_sp: db "attack ", 0
+cmd_kill:      db "kill", 0
+cmd_kill_sp:   db "kill ", 0
+cmd_k:         db "k", 0
+cmd_k_sp:      db "k ", 0
+cmd_consider:  db "consider", 0
+cmd_consider_sp: db "consider ", 0
+cmd_con:       db "con", 0
+cmd_con_sp:    db "con ", 0
+cmd_exits:     db "exits", 0
+cmd_exit:      db "exit", 0
+cmd_sleep:     db "sleep", 0
+cmd_stand:     db "stand", 0
+cmd_wake:      db "wake", 0
+cmd_rest:      db "rest", 0
+cmd_join:      db "join", 0
+cmd_defend:    db "defend", 0
+cmd_oppose:    db "oppose", 0
+cmd_ping:      db "ping", 0
+cmd_ping_sp:   db "ping ", 0
+cmd_world:     db "world", 0
+cmd_weather:   db "weather", 0
+cmd_time:      db "time", 0
 
 cant_move:
     db "The declared ways do not lead there.", 13, 10
@@ -40,13 +69,24 @@ extern hg_emit_ability
 extern strcasecmp
 extern strncasecmp
 extern hg_room_move
+extern hg_cmd_wield
+extern hg_cmd_remove
+extern hg_cmd_attack
+extern hg_cmd_consider
+extern hg_cmd_look_mob
+extern hg_cmd_exits
+extern hg_cmd_sleep
+extern hg_cmd_stand
+extern hg_cmd_rest
+extern hg_cmd_join
+extern hg_cmd_defend
+extern hg_cmd_ping
+extern hg_cmd_world
 
 section .text
 
 global hg_world_command
 
-; int eq(command, literal)
-; rdi=command, rsi=literal
 eq:
     sub rsp, 8
     call strcasecmp wrt ..plt
@@ -56,7 +96,14 @@ eq:
     movzx eax, al
     ret
 
-; rdi=session, rsi=wsi, rdx=zero-terminated command
+; rdi=command, rsi=prefix, rdx=prefix_len -> eax=1 if prefix matches
+prefix:
+    call strncasecmp wrt ..plt
+    test eax, eax
+    sete al
+    movzx eax, al
+    ret
+
 hg_world_command:
     push r12
     push r13
@@ -78,17 +125,24 @@ hg_world_command:
     test eax, eax
     jnz .scene
 
-    ; Full declared-exit movement, including "go <direction>".
+    mov rdi, r14
+    lea rsi, [rel cmd_look_sp]
+    mov edx, 5
+    call prefix
+    test eax, eax
+    jnz .look_mob
+
     mov rdi, r14
     lea rsi, [rel cmd_go_prefix]
     mov edx, 3
-    call strncasecmp wrt ..plt
+    call prefix
     test eax, eax
     jnz .direct_move
-    lea rdx, [r14 + 3]
+    mov rdx, r14
     jmp .try_move
 .direct_move:
-    mov rdx, r14
+    lea rdx, [r14 + 3]
+    jmp .try_move
 .try_move:
     mov rdi, [r12 + SESSION_ROOM]
     mov rsi, rdx
@@ -100,6 +154,161 @@ hg_world_command:
     mov [r12 + SESSION_ROOM], rax
     jmp .scene
 .not_movement:
+
+    mov rdi, r14
+    lea rsi, [rel cmd_wield]
+    call eq
+    test eax, eax
+    jnz .wield_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_wield_sp]
+    mov edx, 6
+    call prefix
+    test eax, eax
+    jnz .wield_arg
+
+    mov rdi, r14
+    lea rsi, [rel cmd_remove]
+    call eq
+    test eax, eax
+    jnz .remove
+    mov rdi, r14
+    lea rsi, [rel cmd_unwield]
+    call eq
+    test eax, eax
+    jnz .remove
+
+    mov rdi, r14
+    lea rsi, [rel cmd_attack]
+    call eq
+    test eax, eax
+    jnz .attack_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_attack_sp]
+    mov edx, 7
+    call prefix
+    test eax, eax
+    jnz .attack_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_kill]
+    call eq
+    test eax, eax
+    jnz .attack_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_kill_sp]
+    mov edx, 5
+    call prefix
+    test eax, eax
+    jnz .kill_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_k]
+    call eq
+    test eax, eax
+    jnz .attack_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_k_sp]
+    mov edx, 2
+    call prefix
+    test eax, eax
+    jnz .k_arg
+
+    mov rdi, r14
+    lea rsi, [rel cmd_consider]
+    call eq
+    test eax, eax
+    jnz .consider_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_consider_sp]
+    mov edx, 9
+    call prefix
+    test eax, eax
+    jnz .consider_arg
+    mov rdi, r14
+    lea rsi, [rel cmd_con]
+    call eq
+    test eax, eax
+    jnz .consider_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_con_sp]
+    mov edx, 4
+    call prefix
+    test eax, eax
+    jnz .con_arg
+
+    mov rdi, r14
+    lea rsi, [rel cmd_exits]
+    call eq
+    test eax, eax
+    jnz .exits
+    mov rdi, r14
+    lea rsi, [rel cmd_exit]
+    call eq
+    test eax, eax
+    jnz .exits
+
+    mov rdi, r14
+    lea rsi, [rel cmd_sleep]
+    call eq
+    test eax, eax
+    jnz .sleep
+    mov rdi, r14
+    lea rsi, [rel cmd_stand]
+    call eq
+    test eax, eax
+    jnz .stand
+    mov rdi, r14
+    lea rsi, [rel cmd_wake]
+    call eq
+    test eax, eax
+    jnz .stand
+    mov rdi, r14
+    lea rsi, [rel cmd_rest]
+    call eq
+    test eax, eax
+    jnz .rest
+    mov rdi, r14
+    lea rsi, [rel cmd_join]
+    call eq
+    test eax, eax
+    jnz .join
+    mov rdi, r14
+    lea rsi, [rel cmd_defend]
+    call eq
+    test eax, eax
+    jnz .defend
+    mov rdi, r14
+    lea rsi, [rel cmd_oppose]
+    call eq
+    test eax, eax
+    jnz .defend
+
+    mov rdi, r14
+    lea rsi, [rel cmd_ping]
+    call eq
+    test eax, eax
+    jnz .ping_empty
+    mov rdi, r14
+    lea rsi, [rel cmd_ping_sp]
+    mov edx, 5
+    call prefix
+    test eax, eax
+    jnz .ping_arg
+
+    mov rdi, r14
+    lea rsi, [rel cmd_world]
+    call eq
+    test eax, eax
+    jnz .world
+    mov rdi, r14
+    lea rsi, [rel cmd_weather]
+    call eq
+    test eax, eax
+    jnz .world
+    mov rdi, r14
+    lea rsi, [rel cmd_time]
+    call eq
+    test eax, eax
+    jnz .world
 
     mov rdi, r14
     lea rsi, [rel cmd_down]
@@ -185,6 +394,120 @@ hg_world_command:
     call hg_session_queue
     jmp .done
 
+.wield_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_wield
+    jmp .done
+.wield_arg:
+    lea rdx, [r14 + 6]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_wield
+    jmp .done
+.remove:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_remove
+    jmp .done
+.attack_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_attack
+    jmp .done
+.attack_arg:
+    lea rdx, [r14 + 7]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_attack
+    jmp .done
+.kill_arg:
+    lea rdx, [r14 + 5]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_attack
+    jmp .done
+.k_arg:
+    lea rdx, [r14 + 2]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_attack
+    jmp .done
+.consider_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_consider
+    jmp .done
+.consider_arg:
+    lea rdx, [r14 + 9]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_consider
+    jmp .done
+.con_arg:
+    lea rdx, [r14 + 4]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_consider
+    jmp .done
+.look_mob:
+    lea rdx, [r14 + 5]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_look_mob
+    jmp .done
+.exits:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_exits
+    jmp .done
+.sleep:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_sleep
+    jmp .done
+.stand:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_stand
+    jmp .done
+.rest:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_rest
+    jmp .done
+.join:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_join
+    jmp .done
+.defend:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_defend
+    jmp .done
+.ping_empty:
+    mov rdi, r12
+    mov rsi, r13
+    xor edx, edx
+    call hg_cmd_ping
+    jmp .done
+.ping_arg:
+    lea rdx, [r14 + 5]
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_ping
+    jmp .done
+.world:
+    mov rdi, r12
+    mov rsi, r13
+    call hg_cmd_world
+    jmp .done
+
 .down:
     cmp qword [r12 + SESSION_ROOM], ROOM_NEXUS
     jne .cant_move
@@ -253,4 +576,3 @@ hg_world_command:
     pop r12
     xor eax, eax
     ret
-

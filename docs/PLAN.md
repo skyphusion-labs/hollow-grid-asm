@@ -22,7 +22,10 @@ gameplay, conformance, federation, release, and deployment are not yet claimed.
       Relay Cut graft
 - [x] Implement room views, actions, declared movement, and persistence
 - [ ] Implement complete identity/status command output
-- [ ] Implement items, equipment, economy, combat, death, and ticks
+- [x] Implement items, equipment, economy, combat, death, and ticks (partial:
+      wield/remove, tunnel rat combat via heartbeat (single-tick resolve today),
+      rest/stand/sleep, join/defend at market, ping/world; no multi-tick round
+      spacing, flee, loot, poison, post-combat save, or full bestiary)
 - [ ] Implement multiplayer communication and presence
 - [ ] Implement the canonical moral arc, rescue, remembrance, and reckoning
 - [ ] Keep all canonical player state synchronized with `@event`

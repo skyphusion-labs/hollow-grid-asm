@@ -14,6 +14,7 @@ BIN := $(BUILD)/hollow-grid-asm
 
 ASM_SRC := \
 	asm/main.asm \
+	asm/combat.asm \
 	asm/content.asm \
 	asm/event.asm \
 	asm/rooms.asm \

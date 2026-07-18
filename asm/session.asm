@@ -52,6 +52,8 @@ extern hg_emit_scene
 extern hg_world_command
 extern hg_store_load
 extern hg_store_save
+extern hg_session_register
+extern hg_session_unregister
 
 section .text
 
@@ -288,6 +290,9 @@ hg_app_callback:
     mov rdi, r13
     mov rsi, r12
     call hg_emit_scene
+    mov rdi, r13
+    mov rsi, r12
+    call hg_session_register
     jmp .ok
 
 .load_failed:
@@ -336,6 +341,9 @@ hg_app_callback:
     mov rdi, r13
     mov rsi, r12
     call hg_emit_scene
+    mov rdi, r13
+    mov rsi, r12
+    call hg_session_register
     jmp .ok
 .bad_race:
     mov rdi, r13
@@ -369,6 +377,8 @@ hg_app_callback:
     jne .clear_closed
     mov rdi, r13
     call hg_store_save
+    mov rdi, r13
+    call hg_session_unregister
 .clear_closed:
     mov qword [r13 + SESSION_OUT_LEN], 0
 
