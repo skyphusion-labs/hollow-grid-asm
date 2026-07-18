@@ -892,6 +892,32 @@ void hg_cmd_who_c(void *session) {
     o += (size_t)w;
     first = 0;
   }
+  hg_grid_presence_row remote[32];
+  size_t remote_n = 0;
+  if (hg_grid_presence(30000, remote, 32, &remote_n) == 0) {
+    for (size_t i = 0; i < remote_n; i++) {
+      if (remote[i].name[0] == '\0' ||
+          strcmp(remote[i].world, world) == 0) {
+        continue;
+      }
+      char nesc[80], tesc[80], resc[80], wesc[80];
+      if (hg_json_escape(nesc, sizeof(nesc), remote[i].name) < 0 ||
+          hg_json_escape(tesc, sizeof(tesc), remote[i].title) < 0 ||
+          hg_json_escape(resc, sizeof(resc), remote[i].regard) < 0 ||
+          hg_json_escape(wesc, sizeof(wesc), remote[i].world) < 0) {
+        continue;
+      }
+      int w = snprintf(json + o, sizeof(json) - o,
+                       "%s{\"world\":\"%s\",\"name\":\"%s\","
+                       "\"regard\":\"%s\",\"here\":false,\"title\":\"%s\"}",
+                       first ? "" : ",", wesc, nesc, resc, tesc);
+      if (w < 0 || (size_t)w >= sizeof(json) - o) {
+        break;
+      }
+      o += (size_t)w;
+      first = 0;
+    }
+  }
   if (o + 2 < sizeof(json)) {
     json[o++] = ']';
     json[o] = '\0';

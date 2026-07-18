@@ -45,6 +45,7 @@ $(BIN): $(OBJS)
 check: $(BIN)
 	./$(BIN) --help >/dev/null
 	./tests/foundation.sh ./$(BIN)
+	python3 ./tests/ws_remote_federation.py ./$(BIN)
 
 # Blocking upstream smoke.mjs (Phase 12 SKIP when DUSTFALL_URL unreachable).
 smoke: $(BIN)
