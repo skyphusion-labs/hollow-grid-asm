@@ -4,8 +4,9 @@ Basalt Relay has a green standalone conformance run (Phase 2). The linux/amd64
 image, health endpoints, WebSocket login, race menu, atomic persistence,
 character resume, canonical map, Relay Cut, declared movement, gameplay,
 moral arc, and LocalHub federation commands exercised by upstream smoke are
-verified. GHCR release + fleet deploy IaC land in Phase 4; live two-world
-federation against Dustfall is recorded after public ingress verify.
+verified. Live deploy is at `wss://basalt.skyphusion.org/ws`. Two-world Phase 12
+against Dustfall runs (not SKIP); remaining cross-hub FAILs are recorded in
+Phase 4 evidence.
 
 ## Phase 0: build and ABI foundation
 
@@ -86,9 +87,9 @@ moral arc (dais join/defy Returned, steal-stray, forgive/redeem, reckoning/deeds
 - [x] Exercise registry, travel prose, rolls, tide ±10, ledger
       (`gridstats`/`gridprune`), `gridcast`, witness/vigil, and presence on
       the LocalHub / standalone path (upstream smoke exit 0)
-- [ ] Run the federation smoke phase against a reachable second world --
-      Phase 12 Dustfall still SKIPs when `DUSTFALL_URL` is unreachable; live
-      two-world handoff is not yet claimed
+- [x] Run the federation smoke phase against a reachable second world --
+      Phase 12 against live Dustfall ran 2026-07-18 (not SKIP); remaining
+      FAILs are hub standing/tide/who + keeper gridstats (see Phase 4 evidence)
 
 ## Phase 4: release
 
@@ -97,8 +98,9 @@ moral arc (dais join/defy Returned, steal-stray, forgive/redeem, reckoning/deeds
       (`release.yml` pushes `ghcr.io/skyphusion-labs/hollow-grid-asm`;
       fleet stack `system/stacks/biafra/basalt-relay/` in fleet-chezmoi;
       AGPL source offer is this public repository)
-- [ ] Deploy only after health, smoke, restart, and persistence checks pass
-- [ ] Add a live URL only after verifying the deployed service
+- [x] Deploy only after health, smoke, restart, and persistence checks pass
+- [x] Add a live URL only after verifying the deployed service
+      (`wss://basalt.skyphusion.org/ws`)
 
 ### Deployment config (IaC)
 
@@ -111,8 +113,16 @@ moral arc (dais join/defy Returned, steal-stray, forgive/redeem, reckoning/deeds
 | Stack path | `/opt/stacks/basalt-relay` |
 | Roll | `basalt-relay-roll` -> `roll-basalt-relay.sh` via deploy-proxy |
 
-Live URL and two-world evidence are filled in after operator bootstrap + verify
-(see fleet-chezmoi `docs/runlog/` and this section's checkboxes above).
+### Evidence (live, 2026-07-18)
+
+- Image: `ghcr.io/skyphusion-labs/hollow-grid-asm:86e92aa@sha256:87edcafb458f5214aa3c65a8342eb430626bebe6450866bccdcefddcf640f870`
+- `curl -sf https://basalt.skyphusion.org/health` -> `ok:true` world Basalt Relay
+- `curl -sf https://basalt.skyphusion.org/health/deep` -> world + grid_hub green
+- Two-world smoke: upstream SHA `2558d00f3637033d00cf6f82ff45bda78fc57748`,
+  `MUD_URL=wss://basalt.skyphusion.org/ws`,
+  `DUSTFALL_URL=wss://dustfall.skyphusion.org/ws` -> **155 ok / 5 FAIL / 0 SKIP**;
+  Phase 12 ran (Dustfall reachable, REACHABLE registry, live travel address).
+  Fleet runlog: `fleet-chezmoi/docs/runlog/2026-07-18-basalt-relay-live.md`
 
 ## Evidence rule
 
