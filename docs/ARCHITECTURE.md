@@ -1,7 +1,7 @@
 # Architecture
 
-Basalt Relay is planned as a Hollow Grid world server for x86-64 Linux. The
-upstream `the-hollow-grid/docs/protocol.md` is the contract.
+Basalt Relay is a Hollow Grid world server under active construction for
+x86-64 Linux. The upstream `the-hollow-grid/docs/protocol.md` is the contract.
 
 ## Ownership
 
@@ -29,7 +29,7 @@ The C shim translates libwebsockets callbacks and buffers into a stable
 assembly-facing ABI. It must not decide commands, mutate game rules, construct
 event semantics, or own world content.
 
-## Planned engine boundaries
+## Engine boundaries
 
 - **Transport:** accept `/ws`, normalize one client message to one command, and
   emit CRLF-terminated lines.
@@ -44,7 +44,9 @@ event semantics, or own world content.
 - **Federation:** use a replaceable client boundary. If the hub fails, continue
   locally and reconcile later.
 
-These are design targets, not claims that modules exist.
+Transport, session, world data, event framing, and persistence modules exist.
+Combat, multiplayer, federation, and the complete command surface remain
+planned behind these boundaries.
 
 ## Protocol invariants
 

@@ -5,10 +5,10 @@ Linux, written primarily in NASM assembly. A tiny C shim may adapt the
 libwebsockets ABI. Assembly owns game rules, state transitions, protocol
 framing, and world content.
 
-This repository is in the **foundation phase**. The linux/amd64 container
-builds and serves health probes plus a minimal WebSocket login and room scene.
-It does not yet claim protocol parity, persistence, federation, or a live
-deployment.
+This repository is in the **standalone world phase**. The linux/amd64 container
+builds and serves health probes, WebSocket login, persistent character resume,
+the canonical 24-room graph, and Basalt Relay's four-room Relay Cut tract. It
+does not yet claim gameplay parity, federation, or a live deployment.
 
 ## Contract
 
@@ -67,10 +67,11 @@ docker build --platform linux/amd64 -t hollow-grid-asm .
 docker run --rm -p 8793:8793 hollow-grid-asm
 ```
 
-Current verification covers CLI startup, HTTP health probes, the SVG map, and
-WebSocket login through the initial `room.info` scene. The upstream
-`smoke.mjs` suite becomes a blocking gate as gameplay lands. Assertions belong
-on `@event` data, not prose.
+Current verification covers CLI startup, HTTP health probes, the SVG map,
+named race selection, atomic JSON persistence, resume without character
+creation, declared movement, dynamic state events, and the route from the
+Nexus into Relay Cut. The upstream `smoke.mjs` suite becomes a blocking gate
+as gameplay lands. Assertions belong on `@event` data, not prose.
 
 ## License
 

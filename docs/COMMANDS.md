@@ -1,9 +1,12 @@
 # Command contract
 
-This file records the required command families for the planned port. It does
-not claim that any command is implemented. Exact aliases and behavior must
-follow upstream dispatch and `docs/protocol.md`; sibling ports are useful
-cross-checks.
+This file records the required command families and current implementation
+surface. Exact aliases and behavior must follow upstream dispatch and
+`docs/protocol.md`; sibling ports are useful cross-checks.
+
+Implemented now: `look`/`l`, every declared direction, `go <direction>`,
+`inventory`/`inv`/`i`, `equipment`/`eq`, Human `ability`/`trait`, `help`/`?`,
+and `quit`. Unavailable exits and unknown commands respond explicitly.
 
 ## Foundation order
 
