@@ -197,6 +197,8 @@ def main() -> None:
             ):
                 chunk += recv_text(sock)
         except socket.timeout:
+            # Timeout is expected while waiting for combat.start or rat
+            # respawn; the outer loop retries until the deadline.
             pass
         transcript = chunk
         if "@event combat.start" in transcript:
