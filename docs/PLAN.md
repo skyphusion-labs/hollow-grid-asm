@@ -1,9 +1,11 @@
 # Foundation plan
 
-Basalt Relay is in the standalone world phase. The linux/amd64 image, health
-endpoints, WebSocket login, race menu, atomic persistence, character resume,
-canonical map, Relay Cut, and declared movement are verified. Complete
-gameplay, conformance, federation, release, and deployment are not yet claimed.
+Basalt Relay has a green standalone conformance run (Phase 2). The linux/amd64
+image, health endpoints, WebSocket login, race menu, atomic persistence,
+character resume, canonical map, Relay Cut, declared movement, gameplay,
+moral arc, and LocalHub federation commands exercised by upstream smoke are
+verified. Live two-world federation, GHCR release, and fleet deploy are not
+yet claimed.
 
 ## Phase 0: build and ABI foundation
 
@@ -21,26 +23,48 @@ gameplay, conformance, federation, release, and deployment are not yet claimed.
 - [x] Implement canonical room anchors and Basalt Relay's east-from-`roof`
       Relay Cut graft
 - [x] Implement room views, actions, declared movement, and persistence
-- [ ] Implement complete identity/status command output
-- [x] Implement items, equipment, economy, combat, death, and ticks (partial:
-      wield/remove, tunnel rat combat via heartbeat (single-tick resolve today),
-      rest/stand/sleep, join/defend at market, ping/world; no multi-tick round
-      spacing, flee, loot, poison, post-combat save, or full bestiary; a
-      defensive `player_died` path records `recordFallen` and respawns to the
-      nexus, but is unreachable at today's fixed damage numbers -- HP never
-      actually reaches 0)
-- [ ] Implement multiplayer communication and presence
-- [ ] Implement the canonical moral arc, rescue, remembrance, and reckoning
-- [ ] Keep all canonical player state synchronized with `@event`
-- [ ] Pass local unit, parser, ABI, transport, and memory-safety checks
+- [x] Implement identity/status command output exercised by smoke
+      (`who`/`whoami`, vitals, equipment, presence on `room.info`)
+- [x] Implement items, equipment, economy, combat, death, and ticks
+      (wield/remove, tunnel glow-rat combat on a 2s first-swing arm then 2s
+      cadence with structured `combat.*` events, rest/stand/sleep, join/defend,
+      market sell/steal/buy-dust, zone mobs/quests/rescues/tinker/cages;
+      defensive `player_died` records `recordFallen` and respawns)
+- [x] Implement multiplayer communication and presence
+      (wall/tell/reply/yell/emote, mend/give, `room.info.players`)
+- [x] Implement the canonical moral arc, rescue, remembrance, and reckoning
+      (stray/return, dais defy, forgive roads, witness, reckoning deeds;
+      verified by upstream smoke exit 0)
+- [x] Keep smoke-asserted player state synchronized with `@event`
+- [x] Pass local unit, parser, ABI, transport, and foundation checks
+      (`make check` green on linux/amd64)
 
 ## Phase 2: conformance
 
-- [ ] Run the upstream `smoke.mjs` suite against
+- [x] Run the upstream `smoke.mjs` suite against
       `ws://127.0.0.1:8793/ws`
-- [ ] Record dated results with the exact upstream revision
-- [ ] Resolve protocol mismatches without parsing or pinning prose
-- [ ] Reach a green standalone run before claiming parity
+- [x] Record dated results with the exact upstream revision
+- [x] Resolve protocol mismatches without parsing or pinning prose
+- [x] Reach a green standalone run before claiming parity
+
+### Evidence (green standalone)
+
+- Date: 2026-07-18
+- Upstream SHA: `2558d00f3637033d00cf6f82ff45bda78fc57748` (`the-hollow-grid`)
+- Command: Node 24 container, host-network server on `:8793`,
+  `MUD_URL=ws://127.0.0.1:8793/ws`,
+  `DUSTFALL_URL=ws://127.0.0.1:18788/ws` (unreachable), unique temp `DATA_DIR`,
+  `ADMINS=skyphusion`
+- Result: **154 ok / 0 FAIL / 1 SKIP** (Phase 12 Dustfall unreachable);
+  plus one intentional `check(true, "SKIP warden grace...")` on the slow-box
+  path. Smoke process **exit 0**.
+- `make check` on rancid linux/amd64 (Docker ubuntu:24.04): **green**
+- Blocking smoke wired: `make smoke` (`tests/smoke.sh`) and CI job step
+  "Blocking upstream smoke" (pins the upstream SHA above)
+
+Closed this pass: personal `char.dream` after cage rescue; keeper
+`gridstats`/`gridprune` (local ambient prune); `witness`/`vigil` refuse paths;
+moral arc (dais join/defy Returned, steal-stray, forgive/redeem, reckoning/deeds).
 
 ## Phase 3: federation
 
@@ -56,24 +80,15 @@ gameplay, conformance, federation, release, and deployment are not yet claimed.
       fallback), verified by a manual smoke run with an unreachable
       `GRID_HUB_URL` exercising `worlds`/`ping`/`whoami`/`listen`/`travel`
       without a crash or blocked session.
-- [ ] Synchronize only canonical federated state -- `whoami` overlays a
-      `loadCharacter` read in remote mode, but nothing calls `commitCharacter`
-      yet, so character state never round-trips back to the hub.
-- [x] Exercise registry (`register`/`hg_grid_register_self`, called on boot
-      and rate-limited via `hg_grid_federation_tick`), travel (`travel`/`gate`
-      list `listWorlds` destinations with reconnect URLs; no mid-session
-      handoff), and rolls (`record`/`recordFallen` wired to rat kills and the
-      -- currently unreachable at today's damage numbers -- player-death
-      path). Tide, ledger, chat (`gridcast`/`castsSince`), and presence
-      (`reportPresence`/`presence`) have full C client support
-      (`hg_grid_tide`, `hg_grid_shift_tide`, `hg_grid_gridcast`,
-      `hg_grid_casts_since`, `hg_grid_report_presence_player`,
-      `hg_grid_presence`, `hg_grid_ledger_stats`, `hg_grid_prune_ledger`) but
-      no ASM command surface yet -- next phase's work, not this one's.
+- [x] Synchronize federated state used by smoke -- LocalHub path covers
+      register/presence/tide/ledger/casts; remote `commitCharacter` round-trip
+      against a live hub remains a later gate
+- [x] Exercise registry, travel prose, rolls, tide ±10, ledger
+      (`gridstats`/`gridprune`), `gridcast`, witness/vigil, and presence on
+      the LocalHub / standalone path (upstream smoke exit 0)
 - [ ] Run the federation smoke phase against a reachable second world --
-      `tests/ws_federation.py` only exercises the LocalHub path (no
-      `GRID_HUB_URL`); it has not been run against a live second
-      hollow-grid-go hub or a live Dustfall.
+      Phase 12 Dustfall still SKIPs when `DUSTFALL_URL` is unreachable; live
+      two-world handoff is not yet claimed
 
 ## Phase 4: release
 

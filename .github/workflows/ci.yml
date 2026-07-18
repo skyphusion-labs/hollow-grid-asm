@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   ci:
     name: ci
@@ -21,8 +25,26 @@ jobs:
           sudo apt-get install -y \
             nasm pkg-config libcjson-dev libwebsockets-dev \
             libcurl4-openssl-dev libssl-dev
-      - name: Build and test
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+      - name: Build and unit/foundation check
         run: make check
+      - name: Fetch upstream smoke suite
+        run: |
+          git clone --depth 1 \
+            https://github.com/skyphusion-labs/the-hollow-grid.git /tmp/the-hollow-grid
+          git -C /tmp/the-hollow-grid fetch --depth 1 origin \
+            2558d00f3637033d00cf6f82ff45bda78fc57748
+          git -C /tmp/the-hollow-grid checkout \
+            2558d00f3637033d00cf6f82ff45bda78fc57748
+      - name: Blocking upstream smoke
+        env:
+          SMOKE_MJS: /tmp/the-hollow-grid/smoke.mjs
+          HG_SMOKE_PORT: "8793"
+          DUSTFALL_URL: ws://127.0.0.1:18788/ws
+          ADMINS: skyphusion
+        run: make smoke
       - name: Build container
         run: docker build --platform linux/amd64 .
 
@@ -48,4 +70,3 @@ jobs:
         with:
           name: coverage
           path: coverage
-
