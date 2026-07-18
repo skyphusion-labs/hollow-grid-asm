@@ -1,14 +1,11 @@
 # hollow-grid-asm
 
-**Basalt Relay** is a planned Hollow Grid custody-node world server for x86-64
-Linux, written primarily in NASM assembly. A tiny C shim may adapt the
-libwebsockets ABI. Assembly owns game rules, state transitions, protocol
-framing, and world content.
+**Basalt Relay** is a Hollow Grid custody-node world server for x86-64 Linux,
+written primarily in NASM assembly. A tiny C shim adapts the libwebsockets ABI.
+Assembly owns game rules, state transitions, protocol framing, and world content.
 
-This repository is in the **standalone world phase**. The linux/amd64 container
-builds and serves health probes, WebSocket login, persistent character resume,
-the canonical 24-room graph, and Basalt Relay's four-room Relay Cut tract. It
-does not yet claim gameplay parity, federation, or a live deployment.
+Live deployment: `wss://basalt.skyphusion.org/ws` (fleet stack on biafra via
+`cloudflared-fleet`). GHCR image: `ghcr.io/skyphusion-labs/hollow-grid-asm`.
 
 ## Contract
 
@@ -17,7 +14,7 @@ The authority is
 Sibling ports in C, Go, and Python are implementation references, not protocol
 authorities.
 
-The target service will provide:
+The service provides:
 
 - WebSocket text transport at `/ws`
 - UTF-8 output with CRLF line endings
@@ -26,7 +23,7 @@ The target service will provide:
 - standalone play when no Grid Hub is configured
 - best-effort federation that never blocks local play
 
-The default planned listen port is `8793`.
+Default listen port: `8793`.
 
 ## Runtime boundary
 
@@ -47,7 +44,7 @@ port's defining boundary.
 - [`docs/COMMANDS.md`](docs/COMMANDS.md): required command surface
 - [`docs/WORLD.md`](docs/WORLD.md): Basalt Relay identity and Relay Cut
 - [`docs/PLAN.md`](docs/PLAN.md): phased implementation plan
-- [`.env.example`](.env.example): planned runtime configuration
+- [`.env.example`](.env.example): runtime configuration
 
 ## Build and run
 
@@ -67,11 +64,10 @@ docker build --platform linux/amd64 -t hollow-grid-asm .
 docker run --rm -p 8793:8793 hollow-grid-asm
 ```
 
-Current verification covers CLI startup, HTTP health probes, the SVG map,
-named race selection, atomic JSON persistence, resume without character
-creation, declared movement, dynamic state events, and the route from the
-Nexus into Relay Cut. The upstream `smoke.mjs` suite becomes a blocking gate
-as gameplay lands. Assertions belong on `@event` data, not prose.
+CI (`ci.yml`) runs `make check` plus blocking upstream smoke. `release.yml` on
+`main` pushes GHCR (`:<sha>` + `:latest`) and dispatches a fleet
+`basalt-relay-roll`. Fleet IaC and roll runbook live in `fleet-chezmoi`
+(`system/stacks/biafra/basalt-relay/`, `RUNBOOK-basalt-relay-roll.md`).
 
 ## License
 

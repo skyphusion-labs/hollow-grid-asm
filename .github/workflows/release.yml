@@ -1,0 +1,70 @@
+name: release
+
+# Image build + GHCR push for hollow-grid-asm (Basalt Relay). Mirrors hollow-grid-c:
+#   - make check on every push/PR
+#   - docker build on every push/PR
+#   - push to GHCR (:<sha> + :latest) on push to main only
+#
+# Blocking upstream smoke stays in ci.yml (PR gate). Do not duplicate it here as
+# informational/non-blocking.
+#
+# After a green GHCR push on main, dispatches fleet-chezmoi basalt-relay-roll when the
+# fleet stack is live (org secret FLEET_DISPATCH_TOKEN).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  IMAGE: ghcr.io/skyphusion-labs/hollow-grid-asm
+
+jobs:
+  build_docker:
+    name: Test, build, and push
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            nasm pkg-config libcjson-dev libwebsockets-dev \
+            libcurl4-openssl-dev libssl-dev
+
+      - name: Build and check
+        run: make check
+
+      - name: Build image
+        run: docker build --platform linux/amd64 -t "$IMAGE:${GITHUB_SHA}" -t "$IMAGE:latest" .
+
+      - name: Log in to GHCR (main only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+
+      - name: Push to GHCR (main only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          docker push "$IMAGE:${GITHUB_SHA}"
+          docker push "$IMAGE:latest"
+          echo "Pushed hollow-grid-asm:${GITHUB_SHA}."
+
+      - name: Dispatch basalt-relay roll to fleet-chezmoi (main only)
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        env:
+          FLEET_DISPATCH_TOKEN: ${{ secrets.FLEET_DISPATCH_TOKEN }}
+        run: bash .github/scripts/dispatch-fleet-basalt-roll.sh
+
+      - name: Clean up
+        if: always()
+        run: |
+          docker logout ghcr.io || true
