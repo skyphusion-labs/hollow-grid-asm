@@ -1462,7 +1462,7 @@ hg_cmd_wall:
     mov esi, 400
     lea rdx, [rel wall_evt_fmt]
     lea rcx, [rsp + 400]
-    mov r8, [rsp + 480]
+    lea r8, [rsp + 480]
     xor eax, eax
     call snprintf wrt ..plt
     lea rdi, [rsp + 720]
@@ -1498,6 +1498,7 @@ hg_cmd_wall:
     mov rdi, r12
     lea rsi, [rel wall_need]
     call queue_line_h
+    jmp .out
 .wall_out:
     add rsp, 832
 .out:
