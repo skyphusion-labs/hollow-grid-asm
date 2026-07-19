@@ -195,27 +195,28 @@ hg_cmd_free:
     mov rdi, r12
     lea rsi, [rel sp2_free_cells]
     call queue_cstr_h
-    sub rsp, 288
-    lea rdi, [rsp + 160]
+    ; esc@0(80) evt@80(160) = 240; keep inside the frame (old +240/80 smashed ret)
+    sub rsp, 240
+    mov rdi, rsp
     mov esi, 80
     lea rdx, [r12 + SESSION_NAME]
     call hg_json_escape wrt ..plt
-    lea rdi, [rsp + 240]
-    mov esi, 80
+    lea rdi, [rsp + 80]
+    mov esi, 160
     lea rdx, [rel sp2_rescued_two]
-    lea rcx, [rsp + 160]
+    mov rcx, rsp
     lea r8, [rel sp2_rook]
     lea r9, [rel sp2_sable]
     xor eax, eax
     call snprintf wrt ..plt
     mov rdi, r12
-    lea rsi, [rsp + 240]
+    lea rsi, [rsp + 80]
     call queue_cstr_h
     mov rdi, r12
     call hg_emit_affects_now wrt ..plt
     mov rdi, r12
     call hg_store_save wrt ..plt
-    add rsp, 288
+    add rsp, 240
     CMD_UNALIGN
     ret
 .cells_empty:
@@ -239,7 +240,7 @@ hg_cmd_gridcast:
     call hg_grid_gridcast wrt ..plt
     test eax, eax
     jnz .fail
-    mov r14, rax
+    ; r14 still holds the message text (eax is 0 on success)
     sub rsp, 320
     mov rdi, rsp
     mov esi, 280
@@ -309,27 +310,28 @@ hg_cmd_shelter:
     mov rdi, r12
     lea rsi, [rel sp2_shelter_prose]
     call queue_cstr_h
-    sub rsp, 288
-    lea rdi, [rsp + 160]
+    ; esc@0(80) evt@80(160) = 240; keep inside the frame (old +240/80 smashed ret)
+    sub rsp, 240
+    mov rdi, rsp
     mov esi, 80
     lea rdx, [r12 + SESSION_NAME]
     call hg_json_escape wrt ..plt
-    lea rdi, [rsp + 240]
-    mov esi, 80
+    lea rdi, [rsp + 80]
+    mov esi, 160
     lea rdx, [rel sp2_rescued_two]
-    lea rcx, [rsp + 160]
+    mov rcx, rsp
     lea r8, [rel sp2_tess]
     lea r9, [rel sp2_jon]
     xor eax, eax
     call snprintf wrt ..plt
     mov rdi, r12
-    lea rsi, [rsp + 240]
+    lea rsi, [rsp + 80]
     call queue_cstr_h
     mov rdi, r12
     call hg_emit_affects_now wrt ..plt
     mov rdi, r12
     call hg_store_save wrt ..plt
-    add rsp, 288
+    add rsp, 240
     CMD_UNALIGN
     ret
 .wrong:
