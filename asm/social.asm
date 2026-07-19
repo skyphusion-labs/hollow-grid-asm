@@ -497,7 +497,7 @@ hg_cmd_sell:
     jz .what
     cmp byte [r14], 0
     je .what
-    sub rsp, 168
+    sub rsp, 160
     mov rdi, rsp
     mov esi, 160
     lea rdx, [rel sell_not_carrying_fmt]
@@ -507,7 +507,7 @@ hg_cmd_sell:
     mov rdi, r12
     mov rsi, rsp
     call queue_line_h
-    add rsp, 168
+    add rsp, 160
     jmp .out
 .what:
     mov rdi, r12
@@ -694,7 +694,8 @@ hg_cmd_buy:
     call inv_add_internal
     mov rdi, r12
     call hg_store_save wrt ..plt
-    sub rsp, 168
+    ; after push r14, rsp≡0; keep 0-mod-16 frame for snprintf.
+    sub rsp, 160
     mov rdi, rsp
     mov esi, 160
     lea rdx, [rel buy_dust_fmt]
@@ -704,7 +705,7 @@ hg_cmd_buy:
     mov rdi, r12
     mov rsi, rsp
     call queue_line_h
-    add rsp, 168
+    add rsp, 160
     call emit_vitals_here
     jmp .out
 .dust_only:
@@ -743,7 +744,7 @@ hg_cmd_emote:
     mov r14, rax
     cmp byte [r14], 0
     je .need
-    sub rsp, 296
+    sub rsp, 288
     mov rdi, rsp
     mov esi, 280
     lea rdx, [rel emote_fmt]
@@ -755,7 +756,7 @@ hg_cmd_emote:
     mov rsi, rsp
     xor rdx, rdx
     call hg_deliver_room wrt ..plt
-    add rsp, 296
+    add rsp, 288
     jmp .out
 .need:
     mov rdi, r12
@@ -942,7 +943,7 @@ hg_cmd_give:
     push rbx
     push r14
     push r15
-    sub rsp, 280
+    sub rsp, 272
     mov r14, rdx
     test r14, r14
     jnz .have_arg
@@ -1083,7 +1084,7 @@ hg_cmd_give:
     mov rdi, r15
     lea rsi, [rsp + 140]
     call queue_cstr_h
-    add rsp, 280
+    add rsp, 272
     pop r15
     pop r14
     pop rbx
@@ -1098,7 +1099,7 @@ hg_cmd_give:
     mov rdi, r12
     lea rsi, [rsp + 140]
     call queue_line_h
-    add rsp, 280
+    add rsp, 272
     pop r15
     pop r14
     pop rbx
@@ -1113,7 +1114,7 @@ hg_cmd_give:
     mov rdi, r12
     lea rsi, [rsp + 140]
     call queue_line_h
-    add rsp, 280
+    add rsp, 272
     pop r15
     pop r14
     pop rbx
@@ -1122,7 +1123,7 @@ hg_cmd_give:
     mov rdi, r12
     lea rsi, [rel give_need]
     call queue_line_h
-    add rsp, 280
+    add rsp, 272
     pop r15
     pop r14
     pop rbx
@@ -1342,7 +1343,7 @@ hg_cmd_yell:
     mov r14, rax
     cmp byte [r14], 0
     je .need
-    sub rsp, 648
+    sub rsp, 640
     lea rdi, [rsp + 400]
     mov esi, 80
     lea rdx, [r12 + SESSION_NAME]
@@ -1414,7 +1415,7 @@ hg_cmd_yell:
     call queue_line_h
     jmp .yell_out
 .yell_out:
-    add rsp, 648
+    add rsp, 640
     pop r15
     pop r14
     pop rbx
@@ -1438,7 +1439,7 @@ hg_cmd_wall:
     mov r14, rax
     cmp byte [r14], 0
     je .need
-    sub rsp, 840
+    sub rsp, 832
     lea rdi, [rsp + 400]
     mov esi, 80
     lea rdx, [r12 + SESSION_NAME]
@@ -1498,7 +1499,7 @@ hg_cmd_wall:
     lea rsi, [rel wall_need]
     call queue_line_h
 .wall_out:
-    add rsp, 840
+    add rsp, 832
 .out:
     pop r14
     ret
