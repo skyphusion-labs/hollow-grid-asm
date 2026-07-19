@@ -943,7 +943,8 @@ hg_cmd_give:
     push rbx
     push r14
     push r15
-    sub rsp, 272
+    ; arg/item@0(200) id@200(16) line@216(160) who@376(40) toks@416(128) = 544
+    sub rsp, 544
     mov r14, rdx
     test r14, r14
     jnz .have_arg
@@ -958,10 +959,8 @@ hg_cmd_give:
     mov esi, 200
     mov rdx, r14
     call strcpy wrt ..plt
-    ; tokenize into rsp+200.., last token is player
-    lea r15, [rsp + 200]
+    lea r15, [rsp + 416]
     xor ebx, ebx
-    mov byte [rsp], 0
     mov rdi, rsp
     movzx eax, byte [rdi]
     test al, al
@@ -984,43 +983,42 @@ hg_cmd_give:
 .term:
     mov byte [rdi], 0
     inc rdi
-    movzx eax, byte [rdi]
-    test al, al
-    jz .done_tok
-    cmp al, " "
-    je .skip_ws
-    cmp al, 9
-    je .skip_ws
-    jmp .tok
 .skip_ws:
-    inc rdi
     movzx eax, byte [rdi]
     test al, al
     jz .done_tok
     cmp al, " "
-    je .skip_ws
+    je .skip_inc
     cmp al, 9
-    je .skip_ws
+    je .skip_inc
     jmp .tok
+.skip_inc:
+    inc rdi
+    jmp .skip_ws
 .done_tok:
     cmp ebx, 2
     jl .need
-    dec ebx
-    mov r14, [r15 + rbx * 8]
+    mov r14, [r15 + rbx * 8 - 8]
+    lea eax, [ebx - 1]
+    mov ebx, eax
     cmp ebx, 1
-    jle .need
-    dec ebx
-    lea rdi, [r15 + rbx * 8]
+    jl .need
+    mov rdi, [r15 + rbx * 8 - 8]
     lea rsi, [rel word_to]
     call strcasecmp wrt ..plt
     test eax, eax
-    jnz .item_ok
+    jnz .item_n_ok
     dec ebx
-    cmp ebx, 0
-    jle .need
-.item_ok:
-    cmp ebx, 0
-    jle .need
+    cmp ebx, 1
+    jl .need
+.item_n_ok:
+    ; Copy recipient name out of the arg buffer before rebuilding the item.
+    lea rdi, [rsp + 376]
+    mov rsi, r14
+    mov edx, 40
+    call strncpy wrt ..plt
+    mov byte [rsp + 415], 0
+    lea r14, [rsp + 376]
     mov byte [rsp], 0
     xor ecx, ecx
 .build:
@@ -1047,7 +1045,7 @@ hg_cmd_give:
     call inv_find_slot
     cmp eax, 0
     jl .not_carry
-    movsxd r8, eax
+    mov ebx, eax
     mov rdi, [r12 + SESSION_ROOM]
     mov rsi, r14
     lea rdx, [r12 + SESSION_NAME]
@@ -1055,73 +1053,73 @@ hg_cmd_give:
     test rax, rax
     jz .no_target
     mov r15, rax
-    imul rcx, r8, SESSION_INV_SLOT_SIZE
+    imul rcx, rbx, SESSION_INV_SLOT_SIZE
     lea rsi, [r12 + SESSION_INVENTORY + rcx]
-    lea rdi, [rsp + 120]
+    lea rdi, [rsp + 200]
     mov edx, 16
     call strncpy wrt ..plt
-    mov byte [rsp + 135], 0
+    mov byte [rsp + 215], 0
     mov rdi, r12
-    mov esi, r8d
+    mov esi, ebx
     call inv_remove_slot
     mov rdi, r15
-    lea rsi, [rsp + 120]
+    lea rsi, [rsp + 200]
     call inv_add_internal
     mov rdi, r12
     call hg_store_save wrt ..plt
     mov rdi, r15
     call hg_store_save wrt ..plt
-    lea rdi, [rsp + 140]
-    mov esi, 120
+    lea rdi, [rsp + 216]
+    mov esi, 160
     lea rdx, [rel give_you_fmt]
-    lea rcx, [rsp + 120]
+    lea rcx, [rsp + 200]
     lea r8, [r15 + SESSION_NAME]
     xor eax, eax
     call snprintf wrt ..plt
     mov rdi, r12
-    lea rsi, [rsp + 140]
+    lea rsi, [rsp + 216]
     call queue_line_h
-    lea rdi, [rsp + 140]
-    mov esi, 120
+    lea rdi, [rsp + 216]
+    mov esi, 160
     lea rdx, [rel give_target_fmt]
     lea rcx, [r12 + SESSION_NAME]
-    lea r8, [rsp + 120]
+    lea r8, [rsp + 200]
     xor eax, eax
     call snprintf wrt ..plt
     mov rdi, r15
-    lea rsi, [rsp + 140]
+    lea rsi, [rsp + 216]
     call queue_cstr_h
-    add rsp, 272
+    add rsp, 544
     pop r15
     pop r14
     pop rbx
     ret
 .not_carry:
-    lea rdi, [rsp + 140]
-    mov esi, 120
+    lea rdi, [rsp + 216]
+    mov esi, 160
     lea rdx, [rel give_not_carry_fmt]
     mov rcx, rsp
     xor eax, eax
     call snprintf wrt ..plt
     mov rdi, r12
-    lea rsi, [rsp + 140]
+    lea rsi, [rsp + 216]
     call queue_line_h
-    add rsp, 272
+    add rsp, 544
     pop r15
     pop r14
     pop rbx
     ret
 .no_target:
-    lea rdi, [rsp + 140]
-    mov esi, 120
+    lea rdi, [rsp + 216]
+    mov esi, 160
     lea rdx, [rel give_no_target_fmt]
     mov rcx, r14
     xor eax, eax
     call snprintf wrt ..plt
     mov rdi, r12
-    lea rsi, [rsp + 140]
+    lea rsi, [rsp + 216]
     call queue_line_h
-    add rsp, 272
+    add rsp, 544
     pop r15
     pop r14
     pop rbx
@@ -1130,7 +1128,7 @@ hg_cmd_give:
     mov rdi, r12
     lea rsi, [rel give_need]
     call queue_line_h
-    add rsp, 272
+    add rsp, 544
     pop r15
     pop r14
     pop rbx
