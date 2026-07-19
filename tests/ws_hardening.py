@@ -34,10 +34,26 @@ def login(port: int, name: str):
     return ws
 
 
+def wait_record(path: str, title: str, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                record = json.load(handle)
+            if record.get("title") == title:
+                return record
+        except (FileNotFoundError, json.JSONDecodeError) as error:
+            last_error = error
+        time.sleep(0.05)
+    raise RuntimeError(f"record did not persist title {title!r}: {path}") from last_error
+
+
 def main() -> None:
     port = int(sys.argv[1])
     data_dir = sys.argv[2]
     name = f"AsmHard{uuid.uuid4().hex[:8]}"
+    path = os.path.join(data_dir, "characters", f"{name.lower()}.json")
 
     ws = login(port, name)
 
@@ -69,7 +85,7 @@ def main() -> None:
     send_text(ws.sock, "title Courier")
     read_until(ws, "Your title is now: Courier.")
     ws.sock.close()
-    time.sleep(0.25)
+    record = wait_record(path, "Courier")
 
     # Server must still accept a new connection (no remote crash).
     ws2 = login(port, f"AsmHard{uuid.uuid4().hex[:8]}")
@@ -87,11 +103,7 @@ def main() -> None:
     if "char.create" in resumed:
         raise RuntimeError("returning character asked to choose a race")
     resume.sock.close()
-    time.sleep(0.25)
 
-    path = os.path.join(data_dir, "characters", f"{name.lower()}.json")
-    with open(path, encoding="utf-8") as handle:
-        record = json.load(handle)
     if record.get("title") != "Courier":
         raise RuntimeError(f"title not persisted: {record!r}")
     if record.get("inventory") != ["shiv"]:

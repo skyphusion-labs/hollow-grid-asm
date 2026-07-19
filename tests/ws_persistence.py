@@ -89,10 +89,28 @@ def read_until(sock: socket.socket, needle: str, limit: int = 12) -> str:
     raise RuntimeError(f"did not receive {needle!r}: {transcript!r}")
 
 
+def wait_record(path: str, room_index: int, timeout: float = 5.0) -> dict:
+    deadline = time.monotonic() + timeout
+    last_error: Exception | None = None
+    while time.monotonic() < deadline:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                record = json.load(handle)
+            if record.get("roomIndex") == room_index:
+                return record
+        except (FileNotFoundError, json.JSONDecodeError) as error:
+            last_error = error
+        time.sleep(0.05)
+    raise RuntimeError(
+        f"record did not reach roomIndex {room_index}: {path}"
+    ) from last_error
+
+
 def main() -> None:
     port = int(sys.argv[1])
     data_dir = sys.argv[2]
     name = "PersistAsm"
+    path = os.path.join(data_dir, "characters", "persistasm.json")
 
     first = connect(port)
     read_until(first, "wanderer?")
@@ -103,7 +121,7 @@ def main() -> None:
     send_text(first, "down")
     read_until(first, '"id":"tunnels"')
     first.close()
-    time.sleep(0.25)
+    wait_record(path, 6)
 
     second = connect(port)
     read_until(second, "wanderer?")
@@ -120,11 +138,8 @@ def main() -> None:
         send_text(second, command)
         read_until(second, f'"id":"{room_id}"')
     second.close()
-    time.sleep(0.25)
+    record = wait_record(path, 24)
 
-    path = os.path.join(data_dir, "characters", "persistasm.json")
-    with open(path, encoding="utf-8") as handle:
-        record = json.load(handle)
     assert record["name"] == name
     assert record["race"] == "human"
     assert record["roomIndex"] == 24
