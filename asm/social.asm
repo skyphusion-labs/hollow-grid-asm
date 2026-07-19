@@ -1439,53 +1439,42 @@ hg_cmd_wall:
     mov r14, rax
     cmp byte [r14], 0
     je .need
-    sub rsp, 832
-    lea rdi, [rsp + 400]
+    ; banner@0(320) nesc@320(80) tesc@400(240) evt@640(400) both@1040(800)
+    sub rsp, 1840
+    lea rdi, [rsp + 320]
     mov esi, 80
     lea rdx, [r12 + SESSION_NAME]
     call hg_json_escape wrt ..plt
     cmp eax, 0
     jl .wall_out
-    lea rdi, [rsp + 480]
+    lea rdi, [rsp + 400]
     mov esi, 240
     mov rdx, r14
     call hg_json_escape wrt ..plt
     cmp eax, 0
     jl .wall_out
-    lea rdi, [rsp]
+    mov rdi, rsp
     mov esi, 320
     lea rdx, [rel wall_banner_fmt]
     mov rcx, r14
     xor eax, eax
     call snprintf wrt ..plt
-    lea rdi, [rsp + 320]
+    lea rdi, [rsp + 640]
     mov esi, 400
     lea rdx, [rel wall_evt_fmt]
-    lea rcx, [rsp + 400]
-    lea r8, [rsp + 480]
+    lea rcx, [rsp + 320]
+    lea r8, [rsp + 400]
     xor eax, eax
     call snprintf wrt ..plt
-    lea rdi, [rsp + 720]
-    mov esi, 800
-    lea rdx, [rsp]
-    lea rcx, [rsp + 320]
-    ; snprintf(both, 800, "%s%s", banner, evt)
-    mov rdi, rsp
-    mov esi, 320
-    call strlen wrt ..plt
-    mov r9, rax
-    lea rdi, [rsp + 320]
-    call strlen wrt ..plt
-    add r9, rax
-    lea rdi, [rsp + 720]
+    lea rdi, [rsp + 1040]
     mov rsi, rsp
     call strcpy wrt ..plt
-    lea rdi, [rsp + 720]
+    lea rdi, [rsp + 1040]
     call strlen wrt ..plt
-    lea rsi, [rsp + 320]
-    lea rdi, [rsp + 720 + rax]
+    lea rdi, [rsp + 1040 + rax]
+    lea rsi, [rsp + 640]
     call strcpy wrt ..plt
-    lea rdi, [rsp + 720]
+    lea rdi, [rsp + 1040]
     xor rsi, rsi
     call hg_deliver_all wrt ..plt
     jmp .wall_out
@@ -1500,7 +1489,7 @@ hg_cmd_wall:
     call queue_line_h
     jmp .out
 .wall_out:
-    add rsp, 832
+    add rsp, 1840
 .out:
     pop r14
     ret
