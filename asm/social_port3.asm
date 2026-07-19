@@ -827,8 +827,8 @@ hg_dais_pledge:
     lea rdi, [r12 + SESSION_NAME]
     mov esi, DEED_PLEDGED
     call hg_add_deed_h
-    xor edi, edi
-    mov esi, -10
+    mov edi, -10
+    xor esi, esi
     call hg_grid_shift_tide wrt ..plt
     ; echo@0(160) shout@160(160) = 320; old 208-byte frame smashed ret on shout
     sub rsp, 320
@@ -909,8 +909,8 @@ hg_cmd_defy:
     lea rdi, [r12 + SESSION_NAME]
     mov esi, DEED_DEFECTED
     call hg_add_deed_h
-    xor edi, edi
-    mov esi, 10
+    mov edi, 10
+    xor esi, esi
     call hg_grid_shift_tide wrt ..plt
     sub rsp, 320
     mov rdi, rsp
