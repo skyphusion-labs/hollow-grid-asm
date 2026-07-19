@@ -9,17 +9,17 @@ json_false: db "false", 0
 empty_players: db "[]", 0
 
 inventory_empty:
-    db "You carry nothing.", 13, 10
+    db "You carry nothing.", 13, 10, 0
 inventory_empty_end:
-inventory_empty_len: equ inventory_empty_end - inventory_empty
+inventory_empty_len: equ inventory_empty_end - inventory_empty - 1
 
 inventory_prefix: db "You carry: ", 0
-inventory_suffix: db ".", 13, 10
+inventory_suffix: db ".", 13, 10, 0
 
 ability_human:
-    db "You flash credentials nobody bothers to check. The registry still provides for its own. (+15 gold)", 13, 10
+    db "You flash credentials nobody bothers to check. The registry still provides for its own. (+15 gold)", 13, 10, 0
 ability_human_end:
-ability_human_len: equ ability_human_end - ability_human
+ability_human_len: equ ability_human_end - ability_human - 1
 
 ability_name_req: db "Requisition", 0
 
@@ -51,6 +51,7 @@ extern hg_emit_scene_now
 
 section .bss
 inv_scratch: resb 512
+%define INV_SCRATCH_CAP 512
 
 section .text
 
@@ -149,7 +150,8 @@ hg_emit_inventory:
     push r13
     push r14
     push r15
-    sub rsp, 8
+    push rbx
+    ; 5 pushes leave rsp 8-mod-16 when entry was 16-aligned (System V call ABI).
     mov r12, rdi
     mov r13, rsi
     mov [r12 + SESSION_WSI], r13
@@ -163,16 +165,21 @@ hg_emit_inventory:
 .loop:
     cmp r14, [r12 + SESSION_INV_COUNT]
     jae .close
+    cmp r14, SESSION_INV_SLOTS
+    jae .close
+    lea rdi, [rel inv_scratch]
+    call strlen wrt ..plt
+    mov rbx, rax
+    ; leave room for ", " (2) + slot (15) + ".\r\n" (3) + NUL
+    cmp rbx, INV_SCRATCH_CAP - 21
+    jae .close
     test r14, r14
     jz .item
     lea rdi, [rel inv_scratch]
-    ; append ", "
-    mov rsi, rdi
-    call strlen wrt ..plt
-    lea rdi, [rel inv_scratch]
-    add rdi, rax
+    add rdi, rbx
     mov word [rdi], 0x202c
     mov byte [rdi + 2], 0
+    add rbx, 2
 .item:
     mov rax, r14
     imul rax, SESSION_INV_SLOT_SIZE
@@ -184,8 +191,13 @@ hg_emit_inventory:
     jmp .loop
 .close:
     lea rdi, [rel inv_scratch]
+    call strlen wrt ..plt
+    cmp rax, INV_SCRATCH_CAP - 4
+    jae .emit
+    lea rdi, [rel inv_scratch]
     lea rsi, [rel inventory_suffix]
     call strcat wrt ..plt
+.emit:
     lea rdi, [rel inv_scratch]
     call strlen wrt ..plt
     mov rcx, rax
@@ -201,7 +213,7 @@ hg_emit_inventory:
     mov ecx, inventory_empty_len
     call hg_session_queue
 .done:
-    add rsp, 8
+    pop rbx
     pop r15
     pop r14
     pop r13

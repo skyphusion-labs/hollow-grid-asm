@@ -180,6 +180,7 @@ extern time
 extern snprintf
 extern strlen
 extern strcpy
+extern strncpy
 extern strcasecmp
 extern hg_session_queue
 extern hg_emit_equipment
@@ -1491,6 +1492,7 @@ hg_cmd_world:
     ret
 
 ; rdi=session, rsi=wsi, rdx=title arg (may be null/empty)
+; SESSION_TITLE is 48 bytes; bound the copy (#11 remote crash).
 hg_cmd_title:
     call setup_cmd
     push r15
@@ -1502,11 +1504,13 @@ hg_cmd_title:
     je .clear
     lea rdi, [r12 + SESSION_TITLE]
     mov rsi, r15
-    call strcpy wrt ..plt
+    mov edx, 47
+    call strncpy wrt ..plt
+    mov byte [r12 + SESSION_TITLE + 47], 0
     mov rdi, rsp
     mov esi, 240
     lea rdx, [rel title_set_fmt]
-    mov rcx, r15
+    lea rcx, [r12 + SESSION_TITLE]
     xor eax, eax
     call snprintf wrt ..plt
     mov r15, rsp

@@ -9,6 +9,9 @@ upstream_sha=${HG_SMOKE_SHA:-2558d00f3637033d00cf6f82ff45bda78fc57748}
 smoke_mjs=${SMOKE_MJS:-}
 data=$(mktemp -d)
 log=$(mktemp)
+# Full suite can exceed a few minutes under CI load; give headroom and honor SMOKE_SLOW.
+# Mirror hollow-grid-c: at least 10 minutes (600s). See #15 / fleet smoke truncation.
+smoke_timeout=${HG_SMOKE_TIMEOUT:-600}
 
 if [ -z "$smoke_mjs" ]; then
   for cand in \
@@ -57,6 +60,7 @@ export MUD_URL="ws://127.0.0.1:${port}/ws"
 export DUSTFALL_URL="${DUSTFALL_URL:-ws://127.0.0.1:18788/ws}"
 # Unique data dir is already isolated; keep smoke from sharing state.
 export DATA_DIR="$data"
+export SMOKE_SLOW="${SMOKE_SLOW:-2}"
 
-echo "smoke: binary=$binary port=$port suite=$smoke_mjs (expect SHA $upstream_sha)"
-node "$smoke_mjs"
+echo "smoke: binary=$binary port=$port suite=$smoke_mjs timeout=${smoke_timeout}s SMOKE_SLOW=$SMOKE_SLOW (expect SHA $upstream_sha)"
+timeout "$smoke_timeout" node "$smoke_mjs"

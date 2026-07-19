@@ -17,6 +17,8 @@ jobs:
   ci:
     name: ci
     runs-on: ubuntu-latest
+    # Full smoke + SMOKE_SLOW=2 needs headroom; 120s truncates (mirror hollow-grid-c).
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v5
       - name: Install build dependencies
@@ -42,6 +44,8 @@ jobs:
         env:
           SMOKE_MJS: /tmp/the-hollow-grid/smoke.mjs
           HG_SMOKE_PORT: "8793"
+          HG_SMOKE_TIMEOUT: "600"
+          SMOKE_SLOW: "2"
           DUSTFALL_URL: ws://127.0.0.1:18788/ws
           ADMINS: skyphusion
         run: make smoke
