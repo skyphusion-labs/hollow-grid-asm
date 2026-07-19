@@ -4,8 +4,9 @@
 written primarily in NASM assembly. A tiny C shim adapts the libwebsockets ABI.
 Assembly owns game rules, state transitions, protocol framing, and world content.
 
-Live deployment: `wss://basalt.skyphusion.org/ws` (fleet stack on biafra via
-`cloudflared-fleet`). GHCR image: `ghcr.io/skyphusion-labs/hollow-grid-asm`.
+Public world is offline pending finished-product review (fleet stack parked on
+biafra). GHCR image: `ghcr.io/skyphusion-labs/hollow-grid-asm` (push gated by
+`BASALT_AUTODEPLOY` / version tag until re-enable).
 
 ## Contract
 
@@ -35,8 +36,9 @@ client -> libwebsockets -> tiny C ABI shim -> NASM engine
                                              +-> persistence and federation seams
 ```
 
-The C layer must remain an ABI adapter. Moving game logic into C breaks the
-port's defining boundary.
+The C layer is an ABI adapter plus presentation helpers (`format.c` JSON/prose
+emitters and hub-row formatting; `grid_hub.c` HTTP/JSON). Game rules and
+command decisions stay in NASM.
 
 ## Repository guide
 
@@ -64,9 +66,9 @@ docker build --platform linux/amd64 -t hollow-grid-asm .
 docker run --rm -p 8793:8793 hollow-grid-asm
 ```
 
-CI (`ci.yml`) runs `make check` plus blocking upstream smoke. `release.yml` on
-`main` pushes GHCR (`:<sha>` + `:latest`) and dispatches a fleet
-`basalt-relay-roll`. Fleet IaC and roll runbook live in `fleet-chezmoi`
+CI (`ci.yml`) runs `make check` plus blocking upstream smoke. `release.yml`
+builds the image on every push/PR; GHCR push and fleet roll stay parked until
+autodeploy is re-enabled. Fleet IaC and roll runbook live in `fleet-chezmoi`
 (`system/stacks/biafra/basalt-relay/`, `RUNBOOK-basalt-relay-roll.md`).
 
 ## License

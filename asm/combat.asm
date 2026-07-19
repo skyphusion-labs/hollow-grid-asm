@@ -217,38 +217,10 @@ extern hg_grid_fmt_ping_echo
 extern hg_grid_inscribe
 extern hg_join_record_oath
 extern hg_grid_shift_tide
-extern hg_cmd_gridcast_c
-extern hg_cmd_list_c
-extern hg_cmd_war_c
-extern hg_cmd_free_c
-extern hg_cmd_shelter_c
-extern hg_cmd_saved_c
-extern hg_cmd_sell_c
-extern hg_cmd_steal_c
-extern hg_cmd_sense_c
-extern hg_cmd_look_player_c
-extern hg_cmd_forgive_c
-extern hg_cmd_talk_c
-extern hg_cmd_buy_c
-extern hg_cmd_wall_c
-extern hg_cmd_tell_c
-extern hg_cmd_reply_c
-extern hg_cmd_yell_c
-extern hg_cmd_emote_c
-extern hg_cmd_mend_c
-extern hg_cmd_give_c
-extern hg_inv_add_item
-extern hg_cmd_who_c
-extern hg_cmd_cache_c
-extern hg_cmd_gather_c
-extern hg_cmd_treat_c
-extern hg_dais_pledge_c
+extern hg_dais_pledge
 extern hg_moral_arc_now
-extern hg_cmd_defy_c
-extern hg_cmd_witness_c
-extern hg_cmd_reckoning_c
-extern hg_cmd_gridstats_c
-extern hg_cmd_gridprune_c
+extern hg_announce_cache_now
+extern hg_inv_add_item
 extern hg_grid_fmt_ping_all
 extern hg_grid_fmt_worlds
 extern hg_grid_fmt_travel
@@ -272,35 +244,8 @@ global hg_cmd_stand
 global hg_cmd_rest
 global hg_cmd_affects
 global hg_cmd_inscribe
-global hg_cmd_sell
-global hg_cmd_steal
-global hg_cmd_sense
-global hg_cmd_forgive
-global hg_cmd_look_player
-global hg_cmd_talk
-global hg_cmd_buy
-global hg_cmd_wall
-global hg_cmd_tell
-global hg_cmd_reply
-global hg_cmd_yell
-global hg_cmd_emote
-global hg_cmd_mend
-global hg_cmd_give
-global hg_cmd_cache
-global hg_cmd_gather
-global hg_cmd_treat
-global hg_cmd_gridcast
-global hg_cmd_list
-global hg_cmd_war
-global hg_cmd_shelter
-global hg_cmd_saved
 global hg_cmd_join
 global hg_cmd_defend
-global hg_cmd_defy
-global hg_cmd_witness
-global hg_cmd_reckoning
-global hg_cmd_gridstats
-global hg_cmd_gridprune
 global hg_cmd_ping
 global hg_cmd_world
 global hg_cmd_listen
@@ -308,8 +253,6 @@ global hg_cmd_whoami
 global hg_cmd_worlds
 global hg_cmd_travel
 global hg_cmd_title
-global hg_cmd_who
-global hg_cmd_free
 global hg_session_pulse
 global hg_session_flush_all
 global hg_session_count
@@ -1221,7 +1164,7 @@ hg_cmd_join:
     cmp qword [r12 + SESSION_ROOM], ROOM_DAIS
     jne .try_market
     mov rdi, r12
-    call hg_dais_pledge_c wrt ..plt
+    call hg_dais_pledge wrt ..plt
     add rsp, 8
     ret
 .try_market:
@@ -1535,22 +1478,6 @@ hg_cmd_title:
     pop r15
     ret
 
-hg_cmd_who:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_who_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_free:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_free_c wrt ..plt
-    add rsp, 8
-    ret
-
 hg_cmd_affects:
     call setup_cmd
     sub rsp, 8
@@ -1625,241 +1552,6 @@ hg_cmd_inscribe:
     add rsp, 8
     pop r15
     pop r14
-    ret
-
-
-
-
-
-hg_cmd_gridcast:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_gridcast_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_list:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_list_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_war:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_war_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_shelter:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_shelter_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_saved:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_saved_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_cache:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_cache_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_gather:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_gather_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_treat:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_treat_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_talk:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_talk_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_buy:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_buy_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_wall:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_wall_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_tell:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_tell_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_reply:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_reply_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_yell:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_yell_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_emote:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_emote_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_mend:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_mend_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_give:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_give_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_sell:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_sell_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_steal:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_steal_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_sense:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_sense_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_forgive:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_forgive_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_defy:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_defy_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_witness:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_witness_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_reckoning:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_reckoning_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_gridstats:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_gridstats_c wrt ..plt
-    add rsp, 8
-    ret
-
-hg_cmd_gridprune:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    call hg_cmd_gridprune_c wrt ..plt
-    add rsp, 8
-    ret
-
-; rdx = look target; returns via C (1 handled). Caller falls through on 0.
-hg_cmd_look_player:
-    call setup_cmd
-    sub rsp, 8
-    mov rdi, r12
-    mov rsi, rdx
-    call hg_cmd_look_player_c wrt ..plt
-    add rsp, 8
     ret
 
 hg_session_count:

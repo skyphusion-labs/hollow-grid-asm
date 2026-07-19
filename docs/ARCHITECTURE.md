@@ -26,8 +26,9 @@ NASM engine
 ```
 
 The C shim translates libwebsockets callbacks and buffers into a stable
-assembly-facing ABI. It must not decide commands, mutate game rules, construct
-event semantics, or own world content.
+assembly-facing ABI. It must not decide commands or mutate game rules. JSON
+and prose presentation helpers (`format.c`) and hub HTTP (`grid_hub.c`) may
+format `@event` lines when asm has already decided the outcome.
 
 ## Engine boundaries
 

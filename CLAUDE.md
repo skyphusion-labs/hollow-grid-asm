@@ -21,7 +21,8 @@ artifacts.
 
 - Assembly owns game logic, state, command dispatch, event payloads, and world
   content.
-- C is limited to the smallest practical libwebsockets ABI shim.
+- C is limited to the libwebsockets ABI shim, hub HTTP/JSON transport, and
+  presentation helpers (`format.c`). Game rules stay in NASM.
 - Runtime target is x86-64 Linux. Assembly syntax is NASM.
 - Default listen port is `8793`.
 - `/ws` uses WebSocket UTF-8 text and CRLF output lines.
