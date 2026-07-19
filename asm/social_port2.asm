@@ -742,42 +742,48 @@ sp2_join_oath_ash: db "%s swore to the Cinder Front as ash-sworn.",0
 global hg_cmd_steal
 hg_cmd_steal:
     call setup_cmd
-    cmp qword [r12+SESSION_ROOM],ROOM_MARKET
+    ; entry≡8; pad so libc/deed calls see 0-mod-16
+    sub rsp, 8
+    cmp qword [r12 + SESSION_ROOM], ROOM_MARKET
     jne .bad
-    sub qword [r12+SESSION_MORALITY],8
-    add qword [r12+SESSION_GOLD],12
-    lea rdi,[r12+SESSION_NAME]
-    mov esi,DEED_STOLEN
+    sub qword [r12 + SESSION_MORALITY], 8
+    add qword [r12 + SESSION_GOLD], 12
+    lea rdi, [r12 + SESSION_NAME]
+    mov esi, DEED_STOLEN
     call hg_add_deed_h
-    mov rdi,r12
+    mov rdi, r12
     call hg_store_save wrt ..plt
-    sub rsp,168
-    mov rdi,rsp
-    mov esi,120
-    lea rdx,[rel sp2_steal_shout]
-    lea rcx,[r12+SESSION_NAME]
-    xor eax,eax
+    sub rsp, 160
+    mov rdi, rsp
+    mov esi, 120
+    lea rdx, [rel sp2_steal_shout]
+    lea rcx, [r12 + SESSION_NAME]
+    xor eax, eax
     call snprintf wrt ..plt
-    mov rdi,[r12+SESSION_ROOM]
-    mov rsi,rsp
-    lea rdx,[r12+SESSION_NAME]
+    mov rdi, [r12 + SESSION_ROOM]
+    mov rsi, rsp
+    lea rdx, [r12 + SESSION_NAME]
     call hg_deliver_room wrt ..plt
-    add rsp,168
-    mov rdi,r12
-    lea rsi,[rel sp2_steal_prose]
+    add rsp, 160
+    mov rdi, r12
+    lea rsi, [rel sp2_steal_prose]
     call queue_line_h
-    mov rdi,[r12+SESSION_ROOM]
+    mov rdi, [r12 + SESSION_ROOM]
     call hg_room_id_cstr wrt ..plt
-    mov rsi,rax
-    mov rdi,r12
+    mov rsi, rax
+    mov rdi, r12
     call hg_emit_vitals_now wrt ..plt
-    mov rdi,r12
+    mov rdi, r12
     call hg_emit_affects_now wrt ..plt
     call moral_arc_h
+    add rsp, 8
     ret
-.bad: mov rdi,r12
-    lea rsi,[rel sp2_steal_bad]
-    jmp queue_line_h
+.bad:
+    mov rdi, r12
+    lea rsi, [rel sp2_steal_bad]
+    call queue_line_h
+    add rsp, 8
+    ret
 
 global hg_cmd_look_player
 hg_cmd_look_player:
