@@ -830,7 +830,8 @@ hg_dais_pledge:
     xor edi, edi
     mov esi, -10
     call hg_grid_shift_tide wrt ..plt
-    sub rsp, 208
+    ; echo@0(160) shout@160(160) = 320; old 208-byte frame smashed ret on shout
+    sub rsp, 320
     mov rdi, rsp
     mov esi, 160
     lea rdx, [rel sp2_pledge_echo]
@@ -850,7 +851,7 @@ hg_dais_pledge:
     xor eax, eax
     call snprintf wrt ..plt
     mov edi, ROOM_DAIS
-    mov rsi, rsp
+    lea rsi, [rsp + 160]
     lea rdx, [r12 + SESSION_NAME]
     call hg_deliver_room wrt ..plt
     mov rdi, r12
@@ -862,7 +863,7 @@ hg_dais_pledge:
     call hg_emit_vitals_now wrt ..plt
     mov rdi, r12
     call hg_emit_room_actions_now wrt ..plt
-    add rsp, 208
+    add rsp, 320
     CMD_UNALIGN
     ret
 .none:
@@ -911,7 +912,7 @@ hg_cmd_defy:
     xor edi, edi
     mov esi, 10
     call hg_grid_shift_tide wrt ..plt
-    sub rsp, 208
+    sub rsp, 320
     mov rdi, rsp
     mov esi, 160
     lea rdx, [rel sp2_defy_echo]
@@ -925,13 +926,13 @@ hg_cmd_defy:
     mov rdi, r12
     call hg_store_save wrt ..plt
     lea rdi, [rsp + 160]
-    mov esi, 120
+    mov esi, 160
     lea rdx, [rel sp2_defy_shout]
     lea rcx, [r12 + SESSION_NAME]
     xor eax, eax
     call snprintf wrt ..plt
     mov edi, ROOM_DAIS
-    mov rsi, rsp
+    lea rsi, [rsp + 160]
     lea rdx, [r12 + SESSION_NAME]
     call hg_deliver_room wrt ..plt
     cmp qword [r12 + SESSION_STRAYED], 0
@@ -956,7 +957,7 @@ hg_cmd_defy:
     call hg_emit_vitals_now wrt ..plt
     mov rdi, r12
     call hg_emit_room_actions_now wrt ..plt
-    add rsp, 208
+    add rsp, 320
     CMD_UNALIGN
     ret
 .none:
