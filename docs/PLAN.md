@@ -84,6 +84,28 @@ saves (branch `fix/crash-hardening-smoke-timeout`):
 Verified: `docker build` on rancid linux/amd64 -> `make check` green
 (persistence, hardening, gameplay, federation, remote federation).
 
+### Evidence (robustness hardening, 2026-07-19)
+
+Fixes for #16 (branch `fix/hardening-textrel-ws-signals`):
+
+- DT_TEXTREL: pointer tables (`phase_table`, `race_table`, `rooms`,
+  `directions`, `exits`) moved to `.data.rel.ro`; RELRO seals them after
+  relocation. Link gated with `-Wl,--fatal-warnings`. Verified
+  `readelf -d` on the built binary: no TEXTREL entry.
+- WS input: fragmented text messages reassemble into a per-session buffer
+  (`SESSION_RX`, session grew to 17400 bytes in `state.inc` +
+  `hg_session.h` lockstep); assembled input over 255 bytes answers
+  "Input too long", never silently truncates.
+- Signals: SIGALRM/`setitimer` watchdog replaced with a 50ms `lws_sul`
+  beat that runs heartbeat/combat/rest/federation ticks on the event
+  loop; SIGINT/SIGTERM use `sigaction` and only set a flag.
+- `tests/ws_hardening.py` gained fragmented-command and oversize-input
+  regressions.
+
+Verified on rancid linux/amd64 (Docker ubuntu:24.04): `make check` green;
+full upstream smoke `2558d00f` -> **153 ok / 0 FAIL / 1 SKIP**
+(Phase 12 Dustfall unreachable, expected SKIP), exit 0.
+
 ## Phase 3: federation
 
 - [x] Add a best-effort Grid Hub client behind a replaceable boundary

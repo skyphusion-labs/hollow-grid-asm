@@ -1,15 +1,32 @@
 #!/usr/bin/env python3
-"""Regression for #11/#12/#13/#15: title bound, inventory prose, persistence."""
+"""Regression for #11/#12/#13/#15/#16: bounds, prose, persistence, WS input."""
 from __future__ import annotations
 
 import json
 import os
 import socket
+import struct
 import sys
 import time
 import uuid
 
 from ws_common import connect, send_text
+
+
+def send_fragmented(sock: socket.socket, first: str, second: str) -> None:
+    """Send one text message split into two WebSocket fragments (#16b)."""
+    for opcode, fin, chunk in ((0x1, 0x00, first), (0x0, 0x80, second)):
+        payload = chunk.encode("utf-8")
+        mask = os.urandom(4)
+        header = bytearray([fin | opcode])
+        if len(payload) < 126:
+            header.append(0x80 | len(payload))
+        else:
+            header.append(0x80 | 126)
+            header.extend(struct.pack("!H", len(payload)))
+        header.extend(mask)
+        header.extend(v ^ mask[i % 4] for i, v in enumerate(payload))
+        sock.sendall(header)
 
 
 def read_until(ws, needle: str, limit: int = 80) -> str:
@@ -81,6 +98,16 @@ def main() -> None:
             break
     else:
         raise RuntimeError(f"no char.equipment line after long title: {eq!r}")
+
+    # Fragmented command must reassemble into one command, not two (#16b).
+    send_fragmented(ws.sock, "inven", "tory")
+    frag = read_until(ws, "You carry:")
+    if "You carry: shiv." not in frag:
+        raise RuntimeError(f"fragmented command mis-parsed: {frag!r}")
+
+    # Oversize input must be answered, never silently truncated (#16b).
+    send_text(ws.sock, "say " + "B" * 300)
+    read_until(ws, "Input too long")
 
     send_text(ws.sock, "title Courier")
     read_until(ws, "Your title is now: Courier.")

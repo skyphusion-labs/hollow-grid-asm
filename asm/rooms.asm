@@ -57,6 +57,8 @@ ROOM_STRINGS handoff_bay, "handoff-bay", "Handoff Bay", "A dead transfer platfor
 ROOM_STRINGS custody_lock, "custody-lock", "Custody Lock", "The Front records people and cargo on the same manifest.", '["west"]'
 ROOM_STRINGS east_repeater, "east-repeater", "East Repeater", "A damaged relay preserves what was forwarded, not what a keeper later claimed.", '["west"]'
 
+; Relocated pointer tables: .data.rel.ro avoids DT_TEXTREL, RELRO seals them.
+section .data.rel.ro progbits alloc noexec write align=8
 rooms:
     dq nexus_id, nexus_name, nexus_desc, nexus_exits, empty_mobs, actions_nexus
     dq tavern_id, tavern_name, tavern_desc, tavern_exits, empty_mobs, actions_tavern
@@ -87,12 +89,15 @@ rooms:
     dq custody_lock_id, custody_lock_name, custody_lock_desc, custody_lock_exits, empty_mobs, actions_lock
     dq east_repeater_id, east_repeater_name, east_repeater_desc, east_repeater_exits, empty_mobs, actions_repeater
 
+section .rodata
 dir_north: db "north", 0
 dir_south: db "south", 0
 dir_east: db "east", 0
 dir_west: db "west", 0
 dir_up: db "up", 0
 dir_down: db "down", 0
+
+section .data.rel.ro
 directions: dq dir_north, dir_south, dir_east, dir_west, dir_up, dir_down
 
 %macro EXIT 3

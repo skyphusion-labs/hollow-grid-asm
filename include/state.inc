@@ -54,7 +54,10 @@
 %define SESSION_CLOSE        744
 %define SESSION_OUT          752
 %define SESSION_OUT_CAP      16384
-%define SESSION_SIZE         17136
+%define SESSION_RX_LEN       17136  ; assembled-message length, -1 = overflowed
+%define SESSION_RX           17144  ; WS fragment reassembly buffer
+%define SESSION_RX_CAP       256
+%define SESSION_SIZE         17400
 
 ; Legacy aliases used during the offset rename (map to new names).
 %define SESSION_WEAPON           SESSION_EQ_WEAPON
