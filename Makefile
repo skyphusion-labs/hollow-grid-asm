@@ -5,7 +5,8 @@ PKG_CONFIG ?= pkg-config
 CPPFLAGS += -Iinclude $(shell $(PKG_CONFIG) --cflags libwebsockets libcjson openssl libcurl)
 CFLAGS ?= -std=c11 -Wall -Wextra -Wpedantic -Werror -O2
 NASMFLAGS ?= -f elf64 -Wall -Werror -Iinclude/ -g -F dwarf
-LDFLAGS ?= -pie -Wl,-z,relro,-z,now,-z,noexecstack
+# --fatal-warnings gates DT_TEXTREL and friends; keep pointer tables in .data.rel.ro.
+LDFLAGS ?= -pie -Wl,-z,relro,-z,now,-z,noexecstack -Wl,--fatal-warnings
 LDLIBS += $(shell $(PKG_CONFIG) --libs libwebsockets libcjson openssl libcurl)
 
 BUILD := build

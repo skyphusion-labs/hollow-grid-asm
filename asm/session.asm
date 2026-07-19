@@ -11,9 +11,12 @@ race_chromed:  db "chromed", 0
 race_dustkin:  db "dustkin", 0
 race_vatborn:  db "vatborn", 0
 
+; Relocated pointer table: .data.rel.ro avoids DT_TEXTREL, RELRO seals it.
+section .data.rel.ro progbits alloc noexec write align=8
 race_table:
     dq race_human, race_elf, race_revenant, race_ghoul
     dq race_chromed, race_dustkin, race_vatborn
+section .rodata
 
 welcome:
     db "Your name enters the custody ledger. Type help if the route is unclear.", 13, 10

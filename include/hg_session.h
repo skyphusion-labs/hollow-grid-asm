@@ -47,7 +47,10 @@
 #define HG_SESSION_CLOSE 744
 #define HG_SESSION_OUT 752
 #define HG_SESSION_OUT_CAP 16384
-#define HG_SESSION_SIZE 17136
+#define HG_SESSION_RX_LEN 17136 /* assembled-message length, -1 = overflowed */
+#define HG_SESSION_RX 17144     /* WS fragment reassembly buffer */
+#define HG_SESSION_RX_CAP 256
+#define HG_SESSION_SIZE 17400
 
 #define HG_MAX_SESSIONS 32
 

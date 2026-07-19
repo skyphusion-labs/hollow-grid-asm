@@ -7,10 +7,6 @@
 #include <string.h>
 #include <time.h>
 
-#if defined(__linux__)
-#include <sys/time.h>
-#endif
-
 #include "hg_grid.h"
 #include "hg_session.h"
 
@@ -30,27 +26,18 @@ extern void hg_combat_round(void *session, void *wsi);
 extern long long hg_now_ms(void);
 extern void hg_emit_vitals_now(void *session, const char *room_id);
 extern const char *hg_room_id_cstr(long long room);
+extern void hg_session_queue(void *session, void *wsi, const void *data,
+                             size_t len);
 
 static volatile sig_atomic_t stopped;
 static const char *active_world = "Basalt Relay";
 static struct lws_context *g_context;
 
+/* Async-signal-safe: set the flag only. The 50ms lws_sul beat below keeps the
+ * service loop waking, so shutdown is observed within one beat. */
 static void stop_server(int signal_number) {
   (void)signal_number;
   stopped = 1;
-  if (g_context != NULL) {
-    lws_cancel_service(g_context);
-  }
-}
-
-/* Wake stuck lws_service waits. After combat.start, the library timeout often
- * stops returning until socket traffic arrives; combat rounds then never drain.
- * A 50ms ITIMER_REAL + lws_cancel_service keeps the cadence alive. */
-static void service_watchdog(int signal_number) {
-  (void)signal_number;
-  if (g_context != NULL) {
-    lws_cancel_service(g_context);
-  }
 }
 
 /* Called from asm at combat start: arm first swing for +2000ms so smoke can
@@ -212,11 +199,41 @@ static int callback(struct lws *wsi, enum lws_callback_reasons reason,
   case LWS_CALLBACK_ESTABLISHED:
     rc = hg_app_callback(wsi, HG_EVT_CONNECTED, session, NULL, 0);
     break;
-  case LWS_CALLBACK_RECEIVE:
-    if (!lws_frame_is_binary(wsi) && lws_is_final_fragment(wsi)) {
-      rc = hg_app_callback(wsi, HG_EVT_RECEIVE, session, input, length);
+  case LWS_CALLBACK_RECEIVE: {
+    /* Reassemble fragmented text messages; reject oversize with a notice
+     * instead of silently truncating ("never silently", CLAUDE.md). */
+    unsigned char *s = (unsigned char *)session;
+    long long rx_len = hg_s_i64(s, HG_SESSION_RX_LEN);
+    unsigned char *rx = s + HG_SESSION_RX;
+
+    if (lws_frame_is_binary(wsi)) {
+      /* /ws is UTF-8 text; drop binary and any partial message around it. */
+      hg_s_set_i64(s, HG_SESSION_RX_LEN, 0);
+      break;
+    }
+    if (rx_len >= 0) {
+      if ((size_t)rx_len + length > (size_t)(HG_SESSION_RX_CAP - 1)) {
+        rx_len = -1; /* oversize: answer at message end */
+      } else {
+        memcpy(rx + rx_len, input, length);
+        rx_len += (long long)length;
+      }
+      hg_s_set_i64(s, HG_SESSION_RX_LEN, rx_len);
+    }
+    if (lws_is_final_fragment(wsi) &&
+        lws_remaining_packet_payload(wsi) == 0) {
+      if (rx_len < 0) {
+        static const char too_long[] =
+            "Input too long (255 bytes max). Command ignored.\r\n";
+        hg_session_queue(session, wsi, too_long, sizeof(too_long) - 1);
+      } else if (rx_len > 0) {
+        rc = hg_app_callback(wsi, HG_EVT_RECEIVE, session, rx,
+                             (size_t)rx_len);
+      }
+      hg_s_set_i64(s, HG_SESSION_RX_LEN, 0);
     }
     break;
+  }
   case LWS_CALLBACK_SERVER_WRITEABLE:
     rc = hg_app_callback(wsi, HG_EVT_WRITABLE, session, NULL, 0);
     break;
@@ -263,13 +280,28 @@ int hg_ws_write(void *socket, const unsigned char *data, size_t length) {
   return 0;
 }
 
+/* 50ms living-world beat on an lws_sul timer. Replaces the old SIGALRM +
+ * lws_cancel_service watchdog: the callback runs on the event loop inside
+ * lws_service, so no library call happens in signal context, and the pending
+ * deadline bounds every service wait (shutdown observed within one beat). */
+static lws_sorted_usec_list_t g_tick_sul;
+
+static void tick_service(lws_sorted_usec_list_t *sul) {
+  long long tick_now = hg_now_ms();
+  hg_heartbeat(tick_now);
+  hg_combat_service(tick_now);
+  hg_rest_service(tick_now);
+  hg_grid_federation_tick(tick_now);
+  lws_sul_schedule(g_context, 0, sul, tick_service, 50 * LWS_US_PER_MS);
+}
+
 int hg_lws_run(const char *host, int port, const char *world_name) {
   struct lws_protocols protocols[] = {
       {"http", callback, hg_app_session_size(), 8192, 0, NULL, 0},
       LWS_PROTOCOL_LIST_TERM,
   };
   struct lws_context_creation_info info;
-  struct itimerval tick;
+  struct sigaction sa;
 
   memset(&info, 0, sizeof(info));
   info.port = port;
@@ -279,9 +311,11 @@ int hg_lws_run(const char *host, int port, const char *world_name) {
 
   active_world = world_name;
   stopped = 0;
-  signal(SIGINT, stop_server);
-  signal(SIGTERM, stop_server);
-  signal(SIGALRM, service_watchdog);
+  memset(&sa, 0, sizeof(sa));
+  sa.sa_handler = stop_server;
+  sigemptyset(&sa.sa_mask);
+  sigaction(SIGINT, &sa, NULL);
+  sigaction(SIGTERM, &sa, NULL);
   lws_set_log_level(LLL_ERR | LLL_WARN, NULL);
 
   g_context = lws_create_context(&info);
@@ -293,23 +327,15 @@ int hg_lws_run(const char *host, int port, const char *world_name) {
     hg_grid_register_self();
   }
 
-  memset(&tick, 0, sizeof(tick));
-  tick.it_value.tv_usec = 50000;
-  tick.it_interval.tv_usec = 50000;
-  setitimer(ITIMER_REAL, &tick, NULL);
+  lws_sul_schedule(g_context, 0, &g_tick_sul, tick_service,
+                   50 * LWS_US_PER_MS);
 
   fprintf(stdout, "%s listening on %s:%d\n", world_name, host, port);
   fflush(stdout);
   /* Single outer service call. Do not nest lws_service. */
-  while (!stopped && lws_service(g_context, 1000) >= 0) {
-    long long tick_now = hg_now_ms();
-    hg_heartbeat(tick_now);
-    hg_combat_service(tick_now);
-    hg_rest_service(tick_now);
-    hg_grid_federation_tick(tick_now);
+  while (!stopped && lws_service(g_context, 0) >= 0) {
   }
-  memset(&tick, 0, sizeof(tick));
-  setitimer(ITIMER_REAL, &tick, NULL);
+  lws_sul_cancel(&g_tick_sul);
   lws_context_destroy(g_context);
   g_context = NULL;
   return 0;

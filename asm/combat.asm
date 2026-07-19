@@ -170,11 +170,16 @@ phase_day: db "day", 0
 phase_dusk: db "dusk", 0
 phase_night: db "night", 0
 phase_dawn: db "dawn", 0
-phase_table: dq phase_day, phase_dusk, phase_night, phase_dawn
 combat_end_result_killed: db "killed", 0
 combat_end_result_died: db "died", 0
 combat_end_result_gone: db "gone", 0
 nexus_id_lit: db "nexus", 0
+
+; Absolute pointer tables need load-time relocation; .data.rel.ro keeps them
+; out of the text segment (no DT_TEXTREL) and RELRO seals them read-only.
+section .data.rel.ro progbits alloc noexec write align=8
+phase_table: dq phase_day, phase_dusk, phase_night, phase_dawn
+
 section .text
 extern time
 extern snprintf
