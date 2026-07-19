@@ -736,12 +736,7 @@ void hg_emit_scene_now(void *session) {
 /* --- social port wave 2: format-only emitters (rules live in asm) --- */
 
 extern const char *hg_regard_of(const void *session);
-extern void hg_deed_add_str(const char *player, const char *kind);
 extern int hg_deed_count_str(const char *player, const char *kind);
-extern int hg_forgiven_has(const char *forgiver, const char *subject);
-extern void hg_forgiven_mark(const char *forgiver, const char *subject);
-extern int hg_kept_has(const char *keeper, const char *fallen);
-extern void hg_kept_mark(const char *keeper, const char *fallen);
 
 void hg_emit_room_actions_now(void *session) {
   char acts[1200];

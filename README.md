@@ -31,14 +31,20 @@ Default listen port: `8793`.
 ```text
 client -> libwebsockets -> tiny C ABI shim -> NASM engine
                                              |
-                                             +-> game rules and world state
-                                             +-> commands and event payloads
-                                             +-> persistence and federation seams
+                                             +-> game rules, state transitions,
+                                             |   and command dispatch
+                                             +-> world content and the moral
+                                             |   arc/economy/rescue systems
+                                             +-> event payloads and
+                                                 persistence/federation seams
 ```
 
-The C layer is an ABI adapter plus presentation helpers (`format.c` JSON/prose
-emitters and hub-row formatting; `grid_hub.c` HTTP/JSON). Game rules and
-command decisions stay in NASM.
+NASM decides every rule: when a command applies, what it mutates, and what
+prose or event it produces. C is three narrow files: `lws_shim.c` (the
+libwebsockets ABI shim), `format.c` (bounded JSON/prose formatting and
+hub-row presentation), and `grid_hub.c` (federation HTTP/JSON transport). C
+may format `@event` JSON from state or hub rows that asm already decided; it
+never decides a command or mutates game rules.
 
 ## Repository guide
 
@@ -67,8 +73,11 @@ docker run --rm -p 8793:8793 hollow-grid-asm
 ```
 
 CI (`ci.yml`) runs `make check` plus blocking upstream smoke. `release.yml`
-builds the image on every push/PR; GHCR push and fleet roll stay parked until
-autodeploy is re-enabled. Fleet IaC and roll runbook live in `fleet-chezmoi`
+builds the image on every push/PR; GHCR push and the fleet roll dispatch fire
+only on a pushed version tag (`v*`), never on a merge to `main` (#22), and
+only when repo variable `BASALT_AUTODEPLOY` is `true` (#20). Basalt Relay
+stays offline until both a tagged release and Mackaye's code review land.
+Fleet IaC and roll runbook live in `fleet-chezmoi`
 (`system/stacks/biafra/basalt-relay/`, `RUNBOOK-basalt-relay-roll.md`).
 
 ## License

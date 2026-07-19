@@ -19,10 +19,13 @@ artifacts.
 
 ## Hard boundaries
 
-- Assembly owns game logic, state, command dispatch, event payloads, and world
-  content.
-- C is limited to the libwebsockets ABI shim, hub HTTP/JSON transport, and
-  presentation helpers (`format.c`). Game rules stay in NASM.
+- Assembly owns game logic, state, command dispatch, event payloads, world
+  content, and the moral arc/economy/rescue systems.
+- C is three narrow files: `lws_shim.c` (libwebsockets ABI shim), `format.c`
+  (bounded JSON/prose formatting and hub-row presentation), and `grid_hub.c`
+  (federation HTTP/JSON transport). C may format `@event` JSON from state or
+  hub rows that asm already decided; it never decides a command or mutates
+  game rules.
 - Runtime target is x86-64 Linux. Assembly syntax is NASM.
 - Default listen port is `8793`.
 - `/ws` uses WebSocket UTF-8 text and CRLF output lines.

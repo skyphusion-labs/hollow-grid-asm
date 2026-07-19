@@ -122,7 +122,13 @@ full upstream smoke `2558d00f` -> **153 ok / 0 FAIL / 1 SKIP**
 
 **Verify (rancid, Docker ubuntu:24.04):** `docker build --platform linux/amd64`
 runs `make check` green (foundation, gameplay, federation,
-`ws_remote_federation`).
+`ws_remote_federation`). Upstream `smoke.mjs` @ `2558d00f` confirms the ported
+`forgive` rule body (kapo/ash-sworn: grace lands, brand permanent, never
+redeemed) exactly against protocol assertions. `witness`, `saved`,
+`gridstats`, and `gridprune` were verified directly against the built binary:
+correct `@event` (`grid.fallen`, `grid.rescued_roll`, `grid.ledger_stats`,
+`grid.ledger_pruned`) and prose, and the `gridstats`/`gridprune` admin gate
+(asm `hg_is_admin`) refuses a non-keeper with no ledger data leaked.
 
 ## Phase 3: federation
 
