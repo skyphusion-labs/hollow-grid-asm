@@ -564,46 +564,51 @@ resolve_return_h:
 sp2_dredemption: db "redemption",0
 
 moral_arc_h:
-    test r12,r12
+    ; Entry rsp≡8; align to 0-mod-16 before any C call (stray path is ash-join).
+    sub rsp, 8
+    test r12, r12
     jz .out
-    cmp byte [r12 + SESSION_NAME],0
+    cmp byte [r12 + SESSION_NAME], 0
     je .out
-    mov rax,[r12 + SESSION_MORALITY]
-    cmp qword [r12 + SESSION_STRAYED],0
+    mov rax, [r12 + SESSION_MORALITY]
+    cmp qword [r12 + SESSION_STRAYED], 0
     jne .check_return
-    cmp rax,STRAY_FLOOR
+    cmp rax, STRAY_FLOOR
     jg .out
-    mov qword [r12 + SESSION_STRAYED],1
-    mov rdi,r12
+    mov qword [r12 + SESSION_STRAYED], 1
+    mov rdi, r12
     call hg_store_save wrt ..plt
-    mov rdi,r12
-    lea rsi,[rel sp2_strayed]
+    mov rdi, r12
+    lea rsi, [rel sp2_strayed]
     call queue_line_h
-    ret
+    jmp .out
 .check_return:
-    cmp qword [r12 + SESSION_REDEEMED],0
+    cmp qword [r12 + SESSION_REDEEMED], 0
     jne .out
-    cmp rax,REDEEM_CEIL
+    cmp rax, REDEEM_CEIL
     jl .out
-    lea rdi,[r12 + SESSION_FACTION]
-    lea rsi,[rel sp2_front]
+    lea rdi, [r12 + SESSION_FACTION]
+    lea rsi, [rel sp2_front]
     call strcmp wrt ..plt
-    test eax,eax
+    test eax, eax
     jz .out
-    cmp qword [r12 + SESSION_ASHSWORN],0
+    cmp qword [r12 + SESSION_ASHSWORN], 0
     jz .returned
-    mov qword [r12 + SESSION_REDEEMED],1
-    mov rdi,r12
+    mov qword [r12 + SESSION_REDEEMED], 1
+    mov rdi, r12
     call hg_store_save wrt ..plt
-    mov rdi,r12
-    lea rsi,[rel sp2_ash_good]
-    jmp queue_line_h
+    mov rdi, r12
+    lea rsi, [rel sp2_ash_good]
+    call queue_line_h
+    jmp .out
 .returned:
     call resolve_return_h
-    mov rdi,r12
-    lea rsi,[rel sp2_return_prose]
+    mov rdi, r12
+    lea rsi, [rel sp2_return_prose]
     call queue_line_h
-.out: ret
+.out:
+    add rsp, 8
+    ret
 
 ; Cache / cooldown accessors for remaining C handlers during migration.
 global hg_cache_gold_peek, hg_cache_gold_add, hg_cache_gold_take
