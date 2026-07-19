@@ -1042,25 +1042,44 @@ hg_cmd_consider:
 
 hg_cmd_look_mob:
     call setup_cmd
+    push r14
+    mov r14, rdx
     cmp qword [r12 + SESSION_ROOM], ROOM_TUNNELS
     jne .no_mob
     cmp qword [rel rat_alive], 0
     je .no_mob
-    mov rdi, rdx
+    test r14, r14
+    jz .no_mob
+    mov rdi, r14
     lea rsi, [rel mob_rat]
     call strcasecmp wrt ..plt
     test eax, eax
+    jz .show
+    mov rdi, r14
+    lea rsi, [rel mob_glow]
+    call strcasecmp wrt ..plt
+    test eax, eax
+    jz .show
+    mov rdi, r14
+    lea rsi, [rel mob_glow_short]
+    call strcasecmp wrt ..plt
+    test eax, eax
     jnz .no_mob
+.show:
     mov rdi, r12
     mov rsi, r13
     lea rdx, [rel rat_desc]
-    jmp queue_cstring
+    call queue_cstring
+    pop r14
+    ret
 .no_mob:
     mov rdi, r12
     mov rsi, r13
     lea rdx, [rel no_mob]
     mov ecx, no_mob_end_len
-    jmp queue_bytes
+    call queue_bytes
+    pop r14
+    ret
 
 hg_cmd_exits:
     call setup_cmd

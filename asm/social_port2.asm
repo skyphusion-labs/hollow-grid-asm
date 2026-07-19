@@ -702,29 +702,31 @@ hg_join_record_oath:
     push rbx
     push r12
     mov r12, rdi
-    sub rsp, 168
-    mov rdi,rsp
-    mov esi,160
-    cmp qword [r12 + SESSION_ASHSWORN],0
-    lea rdx,[rel sp2_join_oath]
+    ; entry rsp≡8; 2 pushes keep ≡8; locals must be 0-mod-16 for C calls.
+    sub rsp, 160
+    mov rdi, rsp
+    mov esi, 160
+    cmp qword [r12 + SESSION_ASHSWORN], 0
+    lea rdx, [rel sp2_join_oath]
     je .text
-    lea rdx,[rel sp2_join_oath_ash]
+    lea rdx, [rel sp2_join_oath_ash]
 .text:
-    lea rcx,[r12+SESSION_NAME]
-    xor eax,eax
+    lea rcx, [r12 + SESSION_NAME]
+    xor eax, eax
     call snprintf wrt ..plt
-    mov rdi,[r12+SESSION_ROOM]
+    mov rdi, [r12 + SESSION_ROOM]
     call hg_room_id_cstr wrt ..plt
-    mov rdi,rax
-    test rdi,rdi
+    mov rdi, rax
+    test rdi, rdi
     jnz .node
-    lea rdi,[rel sp2_market]
-.node: lea rsi,[rel sp2_doath]
-    mov rdx,rsp
+    lea rdi, [rel sp2_market]
+.node:
+    lea rsi, [rel sp2_doath]
+    mov rdx, rsp
     call hg_grid_record_local_echo wrt ..plt
-    mov rdi,r12
+    mov rdi, r12
     call hg_emit_room_actions_now wrt ..plt
-    add rsp, 168
+    add rsp, 160
     pop r12
     pop rbx
     ret
@@ -774,117 +776,116 @@ hg_cmd_steal:
 
 global hg_cmd_look_player
 hg_cmd_look_player:
-    call setup_cmd
-    mov r14,rdx
-    test r14,r14
-    jz .miss
-    mov rdi,r14
-    call skip_spaces
-    mov r14,rax
-    cmp byte [r14],0
-    je .miss
-    mov rdi,[r12+SESSION_ROOM]
-    mov rsi,r14
-    lea rdx,[r12+SESSION_NAME]
-    call find_player_prefix
-    test rax,rax
-    jz .miss
-    push rbx
+    ; world.asm keeps the command line in r14 across look_player -> look_mob.
     push r14
     push r15
-    mov r15,rax
-    sub rsp,648
-    lea rdi,[r15+SESSION_NAME]
-    mov rsi,[r15+SESSION_TITLE]
-    ; prose
-    mov rdi,r15
+    push rbx
+    call setup_cmd
+    mov r15, rdx                      ; arg (do not clobber caller's r14)
+    test r15, r15
+    jz .miss
+    mov rdi, r15
+    call skip_spaces
+    mov r15, rax
+    cmp byte [r15], 0
+    je .miss
+    mov rdi, [r12 + SESSION_ROOM]
+    mov rsi, r15
+    lea rdx, [r12 + SESSION_NAME]
+    call find_player_prefix
+    test rax, rax
+    jz .miss
+    mov r14, rax                      ; target session
+    ; 3 pushes left rsp≡0; sub 664 (≡8) restores System V call alignment.
+    sub rsp, 664
+    mov rdi, r14
     call hg_brand_standing wrt ..plt
-    mov rbx,rax
-    test rbx,rbx
+    mov rbx, rax
+    test rbx, rbx
     jz .plain
-    cmp byte [rbx],0
+    cmp byte [rbx], 0
     je .plain
-    cmp byte [r15+SESSION_TITLE],0
+    cmp byte [r14 + SESSION_TITLE], 0
     je .brand
-    mov rdi,rsp
-    mov esi,240
-    lea rdx,[rel sp2_look_brand_title]
-    lea rcx,[r15+SESSION_NAME]
-    lea r8,[r15+SESSION_TITLE]
-    mov r9,rbx
-    xor eax,eax
+    mov rdi, rsp
+    mov esi, 240
+    lea rdx, [rel sp2_look_brand_title]
+    lea rcx, [r14 + SESSION_NAME]
+    lea r8, [r14 + SESSION_TITLE]
+    mov r9, rbx
+    xor eax, eax
     call snprintf wrt ..plt
     jmp .queued
-.brand: mov rdi,rsp
-    mov esi,240
-    lea rdx,[rel sp2_look_brand]
-    lea rcx,[r15+SESSION_NAME]
-    mov r8,rbx
-    xor eax,eax
+.brand:
+    mov rdi, rsp
+    mov esi, 240
+    lea rdx, [rel sp2_look_brand]
+    lea rcx, [r14 + SESSION_NAME]
+    mov r8, rbx
+    xor eax, eax
     call snprintf wrt ..plt
     jmp .queued
-.plain: mov rdi,rsp
-    mov esi,240
-    lea rdx,[rel sp2_look_plain]
-    lea rcx,[r15+SESSION_NAME]
-    xor eax,eax
+.plain:
+    mov rdi, rsp
+    mov esi, 240
+    lea rdx, [rel sp2_look_plain]
+    lea rcx, [r14 + SESSION_NAME]
+    xor eax, eax
     call snprintf wrt ..plt
-.queued: mov rdi,r12
-    mov rsi,rsp
+.queued:
+    mov rdi, r12
+    mov rsi, rsp
     call queue_line_h
-    lea rdi,[rsp+240]
-    mov esi,80
-    lea rdx,[r15+SESSION_NAME]
+    lea rdi, [rsp + 240]
+    mov esi, 80
+    lea rdx, [r14 + SESSION_NAME]
     call hg_json_escape wrt ..plt
-    lea rdi,[rsp+320]
-    mov esi,80
-    lea rdx,[r15+SESSION_TITLE]
+    lea rdi, [rsp + 320]
+    mov esi, 80
+    lea rdx, [r14 + SESSION_TITLE]
     call hg_json_escape wrt ..plt
-    lea rdi,[rsp+400]
-    mov esi,40
-    lea rdx,[r15+SESSION_FACTION]
+    lea rdi, [rsp + 400]
+    mov esi, 40
+    lea rdx, [r14 + SESSION_FACTION]
     call hg_json_escape wrt ..plt
-    mov rdi,r15
+    mov rdi, r14
     call regard_of_ptr
-    lea rdi,[rsp+440]
-    mov esi,40
-    mov rdx,rax
+    lea rdi, [rsp + 440]
+    mov esi, 40
+    mov rdx, rax
     call hg_json_escape wrt ..plt
-    cmp qword [r15+SESSION_ASHSWORN],0
-    lea r9,[rel sp2_false]
+    cmp qword [r14 + SESSION_ASHSWORN], 0
+    lea r9, [rel sp2_false]
     je .bool
-    lea r9,[rel sp2_true]
+    lea r9, [rel sp2_true]
 .bool:
-    ; snprintf has five substitutions after fmt. The fifth is passed on the
-    ; stack under System V, after the boolean fourth substitution in r9.
-    sub rsp,16
-    mov [rsp],r9
-    lea rax,[rsp+456]             ; old rsp + 440, escaped regard
-    mov [rsp+8],rax
-    lea rdi,[rsp+496]             ; old rsp + 480, event buffer
-    mov esi,168
-    lea rdx,[rel sp2_look_evt]
-    lea rcx,[rsp+256]             ; old rsp + 240, escaped name
-    lea r8,[rsp+336]              ; old rsp + 320, escaped title
-    lea r9,[rsp+416]              ; old rsp + 400, escaped faction
-    ; sixth and seventh variadic arguments are boolean and regard.
-    mov rax,[rsp]
-    mov [rsp],rax
-    lea rax,[rsp+456]
-    mov [rsp+8],rax
-    xor eax,eax
+    sub rsp, 16
+    mov [rsp], r9
+    lea rax, [rsp + 456]
+    mov [rsp + 8], rax
+    lea rdi, [rsp + 496]
+    mov esi, 168
+    lea rdx, [rel sp2_look_evt]
+    lea rcx, [rsp + 256]
+    lea r8, [rsp + 336]
+    lea r9, [rsp + 416]
+    xor eax, eax
     call snprintf wrt ..plt
-    mov rdi,r12
-    lea rsi,[rsp+496]
+    mov rdi, r12
+    lea rsi, [rsp + 496]
     call queue_cstr_h
-    add rsp,16
-    add rsp,648
+    add rsp, 16
+    add rsp, 664
+    pop rbx
     pop r15
     pop r14
-    pop rbx
-    mov eax,1
+    mov eax, 1
     ret
-.miss: xor eax,eax
+.miss:
+    pop rbx
+    pop r15
+    pop r14
+    xor eax, eax
     ret
 
 global hg_cmd_cache, hg_cmd_gather, hg_cmd_who, hg_cmd_reckoning, hg_moral_arc_now
