@@ -219,24 +219,28 @@ emit_vitals_here:
 
 ; rdi=room, rsi=prefix, rdx=except (may be null)
 ; returns rax=session or null (null also if ambiguous)
+; Keep found/current session on the stack: C calls clobber r10/r11.
 find_player_prefix:
     push rbx
     push r12
     push r13
     push r14
     push r15
-    mov r12, rdi
-    mov r13, rsi
-    mov r14, rdx
+    ; 5 pushes leave rsp 0-mod-16; sub 24 -> 8-mod-16 for System V calls.
+    sub rsp, 24
+    mov r12, rdi                      ; room
+    mov r13, rsi                      ; prefix
+    mov r14, rdx                      ; except
+    mov qword [rsp], 0                ; found
+    mov qword [rsp + 8], 0            ; current
     test r13, r13
     jz .none
     cmp byte [r13], 0
     je .none
     mov rdi, r13
     call strlen wrt ..plt
-    mov r15, rax
+    mov r15, rax                      ; prefix len
     xor ebx, ebx
-    xor r10, r10
 .loop:
     cmp ebx, HG_MAX_SESSIONS
     jge .ret_found
@@ -244,13 +248,14 @@ find_player_prefix:
     call hg_session_at wrt ..plt
     test rax, rax
     jz .next
-    mov r11, rax
+    mov [rsp + 8], rax
     cmp r12, 0
     jl .name_ok
-    cmp qword [r11 + SESSION_ROOM], r12
+    cmp qword [rax + SESSION_ROOM], r12
     jne .next
 .name_ok:
-    lea rdi, [r11 + SESSION_NAME]
+    mov rax, [rsp + 8]
+    lea rdi, [rax + SESSION_NAME]
     cmp byte [rdi], 0
     je .next
     test r14, r14
@@ -259,25 +264,28 @@ find_player_prefix:
     call strcasecmp wrt ..plt
     test eax, eax
     jz .next
-    lea rdi, [r11 + SESSION_NAME]
 .no_except:
+    mov rax, [rsp + 8]
+    lea rdi, [rax + SESSION_NAME]
     mov rsi, r13
     mov rdx, r15
     call strncasecmp wrt ..plt
     test eax, eax
     jnz .next
-    test r10, r10
-    jnz .none
-    mov r10, r11
+    cmp qword [rsp], 0
+    jne .none
+    mov rax, [rsp + 8]
+    mov [rsp], rax
 .next:
     inc ebx
     jmp .loop
 .ret_found:
-    mov rax, r10
+    mov rax, [rsp]
     jmp .out
 .none:
     xor eax, eax
 .out:
+    add rsp, 24
     pop r15
     pop r14
     pop r13
