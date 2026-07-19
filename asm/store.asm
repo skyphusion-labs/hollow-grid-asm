@@ -28,7 +28,6 @@ key_strayed: db "strayed", 0
 key_redeemed: db "redeemed", 0
 key_resisted: db "resisted", 0
 key_inventory: db "inventory", 0
-item_shiv: db "shiv", 0
 
 section .bss
 
@@ -52,6 +51,7 @@ extern write
 extern fsync
 extern close
 extern rename
+extern memset
 extern cJSON_Parse
 extern cJSON_Delete
 extern cJSON_CreateObject
@@ -62,6 +62,9 @@ extern cJSON_AddArrayToObject
 extern cJSON_CreateString
 extern cJSON_AddItemToArray
 extern cJSON_GetObjectItemCaseSensitive
+extern cJSON_GetArraySize
+extern cJSON_GetArrayItem
+extern cJSON_IsString
 extern cJSON_GetStringValue
 extern cJSON_GetNumberValue
 extern cJSON_IsTrue
@@ -239,7 +242,8 @@ hg_store_load:
     push r13
     push r14
     push r15
-    sub rsp, 672
+    push rbx
+    sub rsp, 664
     mov r12, rdi
 
     lea rdi, [r12 + SESSION_NAME]
@@ -349,6 +353,60 @@ hg_store_load:
     LOAD_BOOL key_redeemed, SESSION_REDEEMED
     LOAD_BOOL key_resisted, SESSION_RESISTED
 
+    ; Clear inventory, then load from JSON array when present (#13).
+    lea rdi, [r12 + SESSION_INVENTORY]
+    xor esi, esi
+    mov edx, SESSION_INV_SLOTS * SESSION_INV_SLOT_SIZE
+    call memset wrt ..plt
+    mov qword [r12 + SESSION_INV_COUNT], 0
+    mov rdi, r14
+    lea rsi, [rel key_inventory]
+    call cJSON_GetObjectItemCaseSensitive wrt ..plt
+    test rax, rax
+    jz .inv_done
+    mov r13, rax
+    mov rdi, r13
+    call cJSON_GetArraySize wrt ..plt
+    mov dword [rsp + 640], eax
+    xor ebx, ebx
+    xor r15d, r15d
+.inv_loop:
+    cmp r15d, dword [rsp + 640]
+    jae .inv_store_count
+    cmp ebx, SESSION_INV_SLOTS
+    jae .inv_store_count
+    mov rdi, r13
+    mov esi, r15d
+    call cJSON_GetArrayItem wrt ..plt
+    test rax, rax
+    jz .inv_next
+    mov qword [rsp + 648], rax
+    mov rdi, rax
+    call cJSON_IsString wrt ..plt
+    test eax, eax
+    jz .inv_next
+    mov rdi, [rsp + 648]
+    call cJSON_GetStringValue wrt ..plt
+    test rax, rax
+    jz .inv_next
+    mov rcx, rax
+    mov eax, ebx
+    imul eax, SESSION_INV_SLOT_SIZE
+    lea rdi, [r12 + SESSION_INVENTORY]
+    add rdi, rax
+    mov esi, SESSION_INV_SLOT_SIZE
+    lea rdx, [rel string_fmt]
+    xor eax, eax
+    call snprintf wrt ..plt
+    inc ebx
+.inv_next:
+    inc r15d
+    jmp .inv_loop
+.inv_store_count:
+    mov eax, ebx
+    mov [r12 + SESSION_INV_COUNT], rax
+.inv_done:
+
     mov rdi, r14
     call cJSON_Delete wrt ..plt
     mov eax, 1
@@ -363,7 +421,8 @@ hg_store_load:
 .missing:
     xor eax, eax
 .done:
-    add rsp, 672
+    add rsp, 664
+    pop rbx
     pop r15
     pop r14
     pop r13
@@ -384,7 +443,8 @@ hg_store_save:
     push r13
     push r14
     push r15
-    sub rsp, 1328
+    push rbx
+    sub rsp, 1320
     mov r12, rdi
 
     lea rdi, [r12 + SESSION_NAME]
@@ -451,18 +511,38 @@ hg_store_save:
     mov rdi, r13
     lea rsi, [rel key_inventory]
     call cJSON_AddArrayToObject wrt ..plt
+    test rax, rax
+    jz .json_fail
     mov r14, rax
-    lea rdi, [rel item_shiv]
+    xor ebx, ebx
+.inv_save_loop:
+    cmp rbx, [r12 + SESSION_INV_COUNT]
+    jae .inv_save_done
+    cmp rbx, SESSION_INV_SLOTS
+    jae .inv_save_done
+    mov rax, rbx
+    imul rax, SESSION_INV_SLOT_SIZE
+    lea rdi, [r12 + SESSION_INVENTORY]
+    add rdi, rax
+    cmp byte [rdi], 0
+    je .inv_save_next
     call cJSON_CreateString wrt ..plt
+    test rax, rax
+    jz .json_fail
     mov rdi, r14
     mov rsi, rax
     call cJSON_AddItemToArray wrt ..plt
+.inv_save_next:
+    inc rbx
+    jmp .inv_save_loop
+.inv_save_done:
 
     mov rdi, r13
     call cJSON_PrintUnformatted wrt ..plt
     mov r14, rax
     mov rdi, r13
     call cJSON_Delete wrt ..plt
+    xor r13d, r13d
     test r14, r14
     jz .save_error
 
@@ -476,25 +556,55 @@ hg_store_save:
     mov r15d, eax
     mov rdi, r14
     call strlen wrt ..plt
-    mov rdx, rax
-    mov edi, r15d
+    mov rbx, rax
     mov rsi, r14
+.write_loop:
+    test rbx, rbx
+    jz .write_ok
+    mov edi, r15d
+    mov rdx, rbx
     call write wrt ..plt
     test rax, rax
-    js .close_error
+    jle .close_error
+    add rsi, rax
+    sub rbx, rax
+    jmp .write_loop
+.write_ok:
     mov edi, r15d
     call fsync wrt ..plt
+    test eax, eax
+    jnz .close_error
     mov edi, r15d
     call close wrt ..plt
+    test eax, eax
+    jnz .free_error
     lea rdi, [rsp + 640]
     mov rsi, rsp
     call rename wrt ..plt
-    mov r15d, eax
+    test eax, eax
+    jnz .free_error
+    ; Durability of the rename itself: fsync the characters directory (#14).
+    lea rdi, [rel store_root]
+    xor esi, esi
+    xor edx, edx
+    call open wrt ..plt
+    test eax, eax
+    js .rename_ok
+    mov ebx, eax
+    mov edi, eax
+    call fsync wrt ..plt
+    mov edi, ebx
+    call close wrt ..plt
+.rename_ok:
     mov rdi, r14
     call free wrt ..plt
-    mov eax, r15d
+    xor eax, eax
     jmp .save_done
 
+.json_fail:
+    mov rdi, r13
+    call cJSON_Delete wrt ..plt
+    jmp .save_error
 .close_error:
     mov edi, r15d
     call close wrt ..plt
@@ -504,7 +614,8 @@ hg_store_save:
 .save_error:
     mov eax, -1
 .save_done:
-    add rsp, 1328
+    add rsp, 1320
+    pop rbx
     pop r15
     pop r14
     pop r13

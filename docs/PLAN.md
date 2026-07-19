@@ -4,9 +4,10 @@ Basalt Relay has a green standalone conformance run (Phase 2). The linux/amd64
 image, health endpoints, WebSocket login, race menu, atomic persistence,
 character resume, canonical map, Relay Cut, declared movement, gameplay,
 moral arc, and LocalHub federation commands exercised by upstream smoke are
-verified. Live deploy is at `wss://basalt.skyphusion.org/ws`. Two-world Phase 12
-against Dustfall runs (not SKIP); remaining cross-hub FAILs are recorded in
-Phase 4 evidence.
+verified. Public deploy at `wss://basalt.skyphusion.org/ws` was taken offline
+after remote-crash bugs (#11 family); re-enable only after those fixes land.
+Two-world Phase 12 against Dustfall runs (not SKIP); remaining cross-hub FAILs
+are recorded in Phase 4 evidence.
 
 ## Phase 0: build and ABI foundation
 
@@ -61,11 +62,27 @@ Phase 4 evidence.
   path. Smoke process **exit 0**.
 - `make check` on rancid linux/amd64 (Docker ubuntu:24.04): **green**
 - Blocking smoke wired: `make smoke` (`tests/smoke.sh`) and CI job step
-  "Blocking upstream smoke" (pins the upstream SHA above)
+  "Blocking upstream smoke" (pins the upstream SHA above). Timeout floor is
+  **600s** with `SMOKE_SLOW=2` (mirror hollow-grid-c; CI job `timeout-minutes: 25`).
 
 Closed this pass: personal `char.dream` after cage rescue; keeper
 `gridstats`/`gridprune` (local ambient prune); `witness`/`vigil` refuse paths;
 moral arc (dais join/defy Returned, steal-stray, forgive/redeem, reckoning/deeds).
+
+### Evidence (crash hardening, 2026-07-19)
+
+Fixes for open issues that can take down a single-process node or corrupt
+saves (branch `fix/crash-hardening-smoke-timeout`):
+
+- #11: `title` uses bounded `strncpy` into `SESSION_TITLE` (47 + NUL)
+- #12: terminated inventory/ability rodata; inventory scratch capacity-checked
+- #13/#14: save writes real `SESSION_INVENTORY`; write loops to full length;
+  `close` checked; characters dir `fsync` after `rename`; load restores inventory
+- #15: `tests/ws_hardening.py` covers long `title`, inventory prose, title
+  persistence; wired into `tests/foundation.sh`
+
+Verified: `docker build` on rancid linux/amd64 -> `make check` green
+(persistence, hardening, gameplay, federation, remote federation).
 
 ## Phase 3: federation
 
