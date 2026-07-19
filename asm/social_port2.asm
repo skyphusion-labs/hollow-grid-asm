@@ -916,126 +916,150 @@ hg_cmd_reckoning:
 
 hg_cmd_cache:
     call setup_cmd
-    mov r14,rdx
-    xor rax,rax
-    test r14,r14
+    push r14
+    push rbx
+    ; entry≡8, 2 pushes≡8; sub 296 (≡8) => rsp≡0 before calls.
+    ; echo@0(160) prose@160(120) = 280, pad to 296
+    sub rsp, 296
+    mov r14, rdx
+    test r14, r14
     jz .need
-    mov rdi,r14
+    mov rdi, r14
     call skip_spaces
-    mov rdi,rax
+    mov rdi, rax
     call atoll wrt ..plt
-    test rax,rax
+    test rax, rax
     jle .need
-    mov r14,rax
-    mov rax,[r12+SESSION_GOLD]
-    cmp rax,r14
+    mov r14, rax
+    mov rax, [r12 + SESSION_GOLD]
+    cmp rax, r14
     jl .short
-    sub [r12+SESSION_GOLD],r14
-    mov rax,[r12+SESSION_ROOM]
-    cmp rax,0
+    mov rax, [r12 + SESSION_ROOM]
+    cmp rax, 0
     jl .out
-    cmp rax,64
+    cmp rax, 64
     jge .out
+    mov rbx, rax
+    sub qword [r12 + SESSION_GOLD], r14
     lea r11, [rel cache_gold]
-    add qword [r11 + rax*8], r14
-    add qword [r12+SESSION_MORALITY],2
-    mov rdi,r12
+    add qword [r11 + rbx * 8], r14
+    add qword [r12 + SESSION_MORALITY], 2
+    mov rdi, r12
     call hg_store_save wrt ..plt
-    sub rsp,280
-    mov rdi,rsp
-    mov esi,160
-    lea rdx,[rel sp2_cache_echo]
-    lea rcx,[r12+SESSION_NAME]
-    xor eax,eax
+    mov rdi, rsp
+    mov esi, 160
+    lea rdx, [rel sp2_cache_echo]
+    lea rcx, [r12 + SESSION_NAME]
+    xor eax, eax
     call snprintf wrt ..plt
-    mov rdi,[r12+SESSION_ROOM]
+    mov rdi, rbx
     call hg_room_id_cstr wrt ..plt
-    mov rdi,rax
-    test rdi,rdi
+    mov rdi, rax
+    test rdi, rdi
     jnz .node
-    lea rdi,[rel sp2_nexus]
+    lea rdi, [rel sp2_nexus]
 .node:
-    lea rsi,[rel sp2_aid_kind]
-    mov rdx,rsp
+    lea rsi, [rel sp2_aid_kind]
+    mov rdx, rsp
     call hg_grid_record_local_echo wrt ..plt
-    lea rdi,[rsp+160]
-    mov esi,120
-    lea rdx,[rel sp2_cache_prose]
-    mov rcx,r14
-    xor eax,eax
+    lea rdi, [rsp + 160]
+    mov esi, 120
+    lea rdx, [rel sp2_cache_prose]
+    mov rcx, r14
+    xor eax, eax
     call snprintf wrt ..plt
-    mov rdi,r12
-    lea rsi,[rsp+160]
+    mov rdi, r12
+    lea rsi, [rsp + 160]
     call queue_line_h
-    mov rdi,[r12+SESSION_ROOM]
+    mov rdi, rbx
     call hg_room_id_cstr wrt ..plt
-    mov rsi,rax
-    mov rdi,r12
+    mov rsi, rax
+    mov rdi, r12
     call hg_emit_vitals_now wrt ..plt
-    mov rdi,r12
+    mov rdi, r12
     call hg_emit_affects_now wrt ..plt
-    add rsp,280
+    add rsp, 296
+    pop rbx
+    pop r14
     ret
 .short:
-    sub rsp,136
-    mov rdi,rsp
-    mov esi,120
-    lea rdx,[rel sp2_cache_short]
-    mov rcx,r14
-    mov r8,[r12+SESSION_GOLD]
-    xor eax,eax
+    mov rdi, rsp
+    mov esi, 120
+    lea rdx, [rel sp2_cache_short]
+    mov rcx, r14
+    mov r8, [r12 + SESSION_GOLD]
+    xor eax, eax
     call snprintf wrt ..plt
-    mov rdi,r12
-    mov rsi,rsp
+    mov rdi, r12
+    mov rsi, rsp
     call queue_line_h
-    add rsp,136
+    add rsp, 296
+    pop rbx
+    pop r14
     ret
 .need:
-    mov rdi,r12
-    lea rsi,[rel sp2_cache_need]
-    jmp queue_line_h
+    mov rdi, r12
+    lea rsi, [rel sp2_cache_need]
+    call queue_line_h
+    add rsp, 296
+    pop rbx
+    pop r14
+    ret
 .out:
+    add rsp, 296
+    pop rbx
+    pop r14
     ret
 sp2_aid_kind: db "aid",0
 
 hg_cmd_gather:
     call setup_cmd
-    mov rax,[r12+SESSION_ROOM]
-    cmp rax,0
+    push r14
+    push rbx
+    ; entry≡8, 2 pushes≡8; sub 232 (≡8) => rsp≡0. prose@0(200)
+    sub rsp, 232
+    mov rax, [r12 + SESSION_ROOM]
+    cmp rax, 0
     jl .gnone
-    cmp rax,64
+    cmp rax, 64
     jge .gnone
+    mov rbx, rax
     lea r11, [rel cache_gold]
-    mov r14, [r11 + rax*8]
-    test r14,r14
+    mov r14, [r11 + rbx * 8]
+    test r14, r14
     jle .gnone
     lea r11, [rel cache_gold]
-    mov qword [r11 + rax*8], 0
-    add [r12+SESSION_GOLD],r14
-    mov rdi,r12
+    mov qword [r11 + rbx * 8], 0
+    add qword [r12 + SESSION_GOLD], r14
+    mov rdi, r12
     call hg_store_save wrt ..plt
-    sub rsp,216
-    mov rdi,rsp
-    mov esi,200
-    lea rdx,[rel sp2_gather_prose]
-    mov rcx,r14
-    mov r8,[r12+SESSION_GOLD]
-    xor eax,eax
+    mov rdi, rsp
+    mov esi, 200
+    lea rdx, [rel sp2_gather_prose]
+    mov rcx, r14
+    mov r8, [r12 + SESSION_GOLD]
+    xor eax, eax
     call snprintf wrt ..plt
-    mov rdi,r12
-    mov rsi,rsp
+    mov rdi, r12
+    mov rsi, rsp
     call queue_line_h
-    mov rdi,[r12+SESSION_ROOM]
+    mov rdi, rbx
     call hg_room_id_cstr wrt ..plt
-    mov rsi,rax
-    mov rdi,r12
+    mov rsi, rax
+    mov rdi, r12
     call hg_emit_vitals_now wrt ..plt
-    add rsp,216
+    add rsp, 232
+    pop rbx
+    pop r14
     ret
 .gnone:
-    mov rdi,r12
-    lea rsi,[rel sp2_gather_none]
-    jmp queue_line_h
+    mov rdi, r12
+    lea rsi, [rel sp2_gather_none]
+    call queue_line_h
+    add rsp, 232
+    pop rbx
+    pop r14
+    ret
 
 hg_moral_arc_now:
     mov r12, rdi
