@@ -1287,26 +1287,24 @@ hg_cmd_reply:
     call setup_cmd
     push r14
     push r15
+    ; 2 pushes leave rsp≡8; sub 8-mod-16 -> ≡0 for C calls.
     sub rsp, 296
     lea rdi, [r12 + SESSION_REPLY_TO]
     cmp byte [rdi], 0
     je .none
-    mov rsi, rdx
-    test rsi, rsi
+    mov r15, rdx
+    test r15, r15
     jnz .have_msg
-    lea rsi, [rel empty_str]
+    lea r15, [rel empty_str]
 .have_msg:
-    mov rdi, rsp
-    mov esi, 280
-    lea rdx, [rel empty_str]
-    lea rcx, [r12 + SESSION_REPLY_TO]
-    mov r8, rsi
-    ; snprintf(buf, 280, "%s %s", to, arg) - use fmt
+    mov rdi, r15
+    call skip_spaces
+    mov r15, rax
     mov rdi, rsp
     mov esi, 280
     lea rdx, [rel reply_concat_fmt]
     lea rcx, [r12 + SESSION_REPLY_TO]
-    mov r8, rsi
+    mov r8, r15
     xor eax, eax
     call snprintf wrt ..plt
     mov rdi, r12
