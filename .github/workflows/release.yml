@@ -10,6 +10,12 @@ name: release
 #
 # After a green GHCR push on main, dispatches fleet-chezmoi basalt-relay-roll when the
 # fleet stack is live (org secret FLEET_DISPATCH_TOKEN).
+#
+# PARKED 2026-07-19: Basalt Relay is intentionally OFFLINE after a
+# federation-crashing bug. GHCR push and the fleet roll are gated behind repo
+# variable BASALT_AUTODEPLOY. They only run when it is set to "true". Leave it
+# unset/false until the fixes pass Mackaye's code review, then set the variable
+# to re-enable live deploys. Build + check + image build still run every merge.
 
 on:
   push:
@@ -47,19 +53,31 @@ jobs:
       - name: Build image
         run: docker build --platform linux/amd64 -t "$IMAGE:${GITHUB_SHA}" -t "$IMAGE:latest" .
 
-      - name: Log in to GHCR (main only)
+      - name: Autodeploy gate (parked; see header)
+        id: gate
         if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        run: |
+          if [ "${{ vars.BASALT_AUTODEPLOY }}" = "true" ]; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+            echo "BASALT_AUTODEPLOY=true: GHCR push + fleet roll will run."
+          else
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Basalt autodeploy PARKED (BASALT_AUTODEPLOY unset/false); skipping GHCR push and fleet roll. World stays offline until Mackaye CR."
+          fi
+
+      - name: Log in to GHCR (main only)
+        if: steps.gate.outputs.enabled == 'true'
         run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u "${{ github.actor }}" --password-stdin
 
       - name: Push to GHCR (main only)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: steps.gate.outputs.enabled == 'true'
         run: |
           docker push "$IMAGE:${GITHUB_SHA}"
           docker push "$IMAGE:latest"
           echo "Pushed hollow-grid-asm:${GITHUB_SHA}."
 
       - name: Dispatch basalt-relay roll to fleet-chezmoi (main only)
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: steps.gate.outputs.enabled == 'true'
         env:
           FLEET_DISPATCH_TOKEN: ${{ secrets.FLEET_DISPATCH_TOKEN }}
         run: bash .github/scripts/dispatch-fleet-basalt-roll.sh
