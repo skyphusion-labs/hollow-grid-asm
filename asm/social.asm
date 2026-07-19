@@ -994,7 +994,14 @@ hg_cmd_give:
     jmp .tok
 .skip_ws:
     inc rdi
-    jmp .skip_ws
+    movzx eax, byte [rdi]
+    test al, al
+    jz .done_tok
+    cmp al, " "
+    je .skip_ws
+    cmp al, 9
+    je .skip_ws
+    jmp .tok
 .done_tok:
     cmp ebx, 2
     jl .need
@@ -1341,24 +1348,25 @@ hg_cmd_yell:
     mov r14, rax
     cmp byte [r14], 0
     je .need
-    sub rsp, 640
-    lea rdi, [rsp + 400]
+    ; fesc@0(80) tesc@80(200) evt@280(320) prose@600(280) both@880(600) = 1480
+    sub rsp, 1488
+    mov rdi, rsp
     mov esi, 80
     lea rdx, [r12 + SESSION_NAME]
     call hg_json_escape wrt ..plt
     cmp eax, 0
     jl .yell_out
-    lea rdi, [rsp + 480]
+    lea rdi, [rsp + 80]
     mov esi, 200
     mov rdx, r14
     call hg_json_escape wrt ..plt
     cmp eax, 0
     jl .yell_out
-    lea rdi, [rsp + 320]
+    lea rdi, [rsp + 280]
     mov esi, 320
     lea rdx, [rel yell_evt_fmt]
-    lea rcx, [rsp + 400]
-    lea r8, [rsp + 480]
+    mov rcx, rsp
+    lea r8, [rsp + 80]
     xor eax, eax
     call snprintf wrt ..plt
     xor ebx, ebx
@@ -1377,7 +1385,7 @@ hg_cmd_yell:
     lea rsi, [r15 + SESSION_NAME]
     call strcasecmp wrt ..plt
     jz .you
-    lea rdi, [rsp]
+    lea rdi, [rsp + 600]
     mov esi, 280
     lea rdx, [rel yell_other_fmt]
     lea rcx, [r12 + SESSION_NAME]
@@ -1386,23 +1394,23 @@ hg_cmd_yell:
     call snprintf wrt ..plt
     jmp .send
 .you:
-    lea rdi, [rsp]
+    lea rdi, [rsp + 600]
     mov esi, 280
     lea rdx, [rel yell_you_fmt]
     mov rcx, r14
     xor eax, eax
     call snprintf wrt ..plt
 .send:
-    lea rdi, [rsp + 280]
-    mov esi, 360
-    mov rdx, rsp
+    lea rdi, [rsp + 880]
+    lea rsi, [rsp + 600]
+    call strcpy wrt ..plt
+    lea rdi, [rsp + 880]
     call strlen wrt ..plt
-    lea rdi, [rsp + 280]
-    lea rsi, [rsp + rax]
-    lea rdx, [rsp + 320]
+    lea rdi, [rsp + 880 + rax]
+    lea rsi, [rsp + 280]
     call strcpy wrt ..plt
     mov rdi, r15
-    lea rsi, [rsp + 280]
+    lea rsi, [rsp + 880]
     call queue_cstr_h
 .next:
     inc ebx
@@ -1411,9 +1419,12 @@ hg_cmd_yell:
     mov rdi, r12
     lea rsi, [rel yell_need]
     call queue_line_h
-    jmp .yell_out
+    pop r15
+    pop r14
+    pop rbx
+    ret
 .yell_out:
-    add rsp, 640
+    add rsp, 1488
     pop r15
     pop r14
     pop rbx
