@@ -297,6 +297,8 @@ find_player_prefix:
 inv_add_internal:
     push r12
     push r13
+    push rbx
+    ; entry≡8 + 3 pushes => rsp≡0 for strncpy
     mov r12, rdi
     mov r13, rsi
     test r13, r13
@@ -308,20 +310,21 @@ inv_add_internal:
     jl .fail
     cmp rax, SESSION_INV_SLOTS
     jge .fail
-    imul rcx, rax, SESSION_INV_SLOT_SIZE
-    lea rdi, [r12 + SESSION_INVENTORY + rcx]
+    imul rbx, rax, SESSION_INV_SLOT_SIZE
+    lea rdi, [r12 + SESSION_INVENTORY + rbx]
     mov rsi, r13
     mov edx, SESSION_INV_SLOT_SIZE
     call strncpy wrt ..plt
-    imul rcx, qword [r12 + SESSION_INV_COUNT], SESSION_INV_SLOT_SIZE
-    mov byte [r12 + SESSION_INVENTORY + rcx + SESSION_INV_SLOT_SIZE - 1], 0
+    mov byte [r12 + SESSION_INVENTORY + rbx + SESSION_INV_SLOT_SIZE - 1], 0
     inc qword [r12 + SESSION_INV_COUNT]
     xor eax, eax
+    pop rbx
     pop r13
     pop r12
     ret
 .fail:
     mov eax, -1
+    pop rbx
     pop r13
     pop r12
     ret
@@ -590,11 +593,13 @@ hg_cmd_talk:
     lea rsi, [rel talk_dais_ally]
     jmp queue_cstr_h
 
-; internal: r12=session, r13=arg
+; internal: r12=session, rdi=arg (do not clobber caller's r13/wsi)
 buy_workshop:
     push r14
     push r15
-    mov r15, r13
+    push rbx
+    ; entry≡8 + 3 pushes => rsp≡0 for libc calls
+    mov r15, rdi
     test r15, r15
     jnz .skip
     lea r15, [rel empty_str]
@@ -605,71 +610,75 @@ buy_workshop:
     lea rdi, [rel item_helm]
     mov rsi, r15
     call strcasecmp wrt ..plt
+    test eax, eax
     jz .helm
     lea rdi, [rel item_plating]
     mov rsi, r15
     call strcasecmp wrt ..plt
+    test eax, eax
     jz .plating
     lea rdi, [rel item_rebar]
     mov rsi, r15
     call strcasecmp wrt ..plt
+    test eax, eax
     jz .rebar
     mov rdi, r12
     lea rsi, [rel buy_no_item]
     call queue_line_h
     jmp .out
 .helm:
-    mov r14d, 14
+    mov ebx, 14
     lea r15, [rel item_helm]
-    lea r13, [rel pretty_helm]
+    lea r14, [rel pretty_helm]
     jmp .pay
 .plating:
-    mov r14d, 18
+    mov ebx, 18
     lea r15, [rel item_plating]
-    lea r13, [rel pretty_plating]
+    lea r14, [rel pretty_plating]
     jmp .pay
 .rebar:
-    mov r14d, 20
+    mov ebx, 20
     lea r15, [rel item_rebar]
-    lea r13, [rel pretty_rebar]
+    lea r14, [rel pretty_rebar]
 .pay:
     mov rax, [r12 + SESSION_GOLD]
-    cmp rax, r14
+    cmp rax, rbx
     jl .poor
-    sub rax, r14
+    sub rax, rbx
     mov [r12 + SESSION_GOLD], rax
     mov rdi, r12
     mov rsi, r15
     call inv_add_internal
     mov rdi, r12
     call hg_store_save wrt ..plt
-    sub rsp, 168
+    sub rsp, 160
     mov rdi, rsp
     mov esi, 160
     lea rdx, [rel buy_hand_fmt]
-    mov rcx, r13
+    mov rcx, r14
     xor eax, eax
     call snprintf wrt ..plt
     mov rdi, r12
     mov rsi, rsp
     call queue_line_h
-    add rsp, 168
+    add rsp, 160
     call emit_vitals_here
     jmp .out
 .poor:
-    sub rsp, 168
+    sub rsp, 160
     mov rdi, rsp
     mov esi, 160
     lea rdx, [rel buy_cant_afford_fmt]
-    mov ecx, r14d
+    mov ecx, ebx
     mov r8, [r12 + SESSION_GOLD]
     xor eax, eax
     call snprintf wrt ..plt
     mov rdi, r12
     mov rsi, rsp
     call queue_line_h
-    add rsp, 168
+    add rsp, 160
 .out:
+    pop rbx
     pop r15
     pop r14
     ret
@@ -728,7 +737,7 @@ hg_cmd_buy:
 .workshop:
     cmp rax, ROOM_WORKSHOP
     jne .nothing
-    mov r13, r14
+    mov rdi, r14
     call buy_workshop
     jmp .out
 .nothing:
