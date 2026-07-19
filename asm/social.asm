@@ -226,8 +226,8 @@ find_player_prefix:
     push r13
     push r14
     push r15
-    ; 5 pushes leave rsp 0-mod-16; sub 24 -> 8-mod-16 for System V calls.
-    sub rsp, 24
+    ; 5 pushes leave rsp 0-mod-16; keep that for System V calls.
+    sub rsp, 16
     mov r12, rdi                      ; room
     mov r13, rsi                      ; prefix
     mov r14, rdx                      ; except
@@ -285,7 +285,7 @@ find_player_prefix:
 .none:
     xor eax, eax
 .out:
-    add rsp, 24
+    add rsp, 16
     pop r15
     pop r14
     pop r13

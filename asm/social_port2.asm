@@ -702,8 +702,8 @@ hg_join_record_oath:
     push rbx
     push r12
     mov r12, rdi
-    ; entry rsp≡8; 2 pushes keep ≡8; locals must be 0-mod-16 for C calls.
-    sub rsp, 160
+    ; entry rsp≡8; 2 pushes keep ≡8; sub 8-mod-16 -> rsp≡0 before C calls.
+    sub rsp, 168
     mov rdi, rsp
     mov esi, 160
     cmp qword [r12 + SESSION_ASHSWORN], 0
@@ -726,7 +726,7 @@ hg_join_record_oath:
     call hg_grid_record_local_echo wrt ..plt
     mov rdi, r12
     call hg_emit_room_actions_now wrt ..plt
-    add rsp, 160
+    add rsp, 168
     pop r12
     pop rbx
     ret
@@ -796,8 +796,8 @@ hg_cmd_look_player:
     test rax, rax
     jz .miss
     mov r14, rax                      ; target session
-    ; 3 pushes left rsp≡0; sub 664 (≡8) restores System V call alignment.
-    sub rsp, 664
+    ; 3 pushes left rsp≡0; keep 0-mod-16 locals so C calls stay aligned.
+    sub rsp, 656
     mov rdi, r14
     call hg_brand_standing wrt ..plt
     mov rbx, rax
@@ -875,7 +875,7 @@ hg_cmd_look_player:
     lea rsi, [rsp + 496]
     call queue_cstr_h
     add rsp, 16
-    add rsp, 664
+    add rsp, 656
     pop rbx
     pop r15
     pop r14
