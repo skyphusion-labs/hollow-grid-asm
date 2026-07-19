@@ -1223,7 +1223,7 @@ tell_impl:
     mov esi, 320
     lea rdx, [rel tell_evt_fmt]
     lea rcx, [rsp + 720]
-    mov r8, [rsp + 800]
+    lea r8, [rsp + 800]
     xor eax, eax
     call snprintf wrt ..plt
     mov rdi, rsp
@@ -1360,7 +1360,7 @@ hg_cmd_yell:
     mov esi, 320
     lea rdx, [rel yell_evt_fmt]
     lea rcx, [rsp + 400]
-    mov r8, [rsp + 480]
+    lea r8, [rsp + 480]
     xor eax, eax
     call snprintf wrt ..plt
     xor ebx, ebx
@@ -1376,7 +1376,7 @@ hg_cmd_yell:
     cmp byte [rdi], 0
     je .next
     lea rdi, [r12 + SESSION_NAME]
-    mov rsi, [r15 + SESSION_NAME]
+    lea rsi, [r15 + SESSION_NAME]
     call strcasecmp wrt ..plt
     jz .you
     lea rdi, [rsp]
