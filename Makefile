@@ -17,9 +17,10 @@ ASM_SRC := \
 	asm/main.asm \
 	asm/combat.asm \
 	asm/social.asm \
-	asm/social_port2.asm \
-	asm/social_port3.asm \
+	asm/social_ledger.asm \
+	asm/social_grid.asm \
 	asm/actions.asm \
+	asm/grid_local.asm \
 	asm/content.asm \
 	asm/event.asm \
 	asm/rooms.asm \

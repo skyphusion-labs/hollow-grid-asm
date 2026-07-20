@@ -20,13 +20,13 @@ artifacts.
 ## Hard boundaries
 
 - Assembly owns game logic, state, command dispatch, world content, the moral
-  arc/economy/rescue systems, action menus and valence, dream selection, and
-  prune-kind policy.
-- C is three narrow files: `lws_shim.c` (libwebsockets ABI shim), `format.c`
+  arc/economy/rescue systems, action menus and valence, dream selection,
+  prune-kind policy, LocalHub federation memory, and tide clamp. Anything that
+  can live in NASM does.
+- C is three narrow files only: `lws_shim.c` (libwebsockets ABI), `format.c`
   (bounded `@event`/prose serialization from values asm already chose), and
-  `grid_hub.c` (federation HTTP/JSON transport and hub storage). C never
-  decides a command, a moral menu, or a game-rule threshold, and never mutates
-  game rules.
+  `grid_hub.c` (RemoteHub libcurl/cJSON plus hub-backed prose wrappers). C never
+  decides a command, moral menu, threshold, or LocalHub store mutation.
 - Runtime target is x86-64 Linux. Assembly syntax is NASM.
 - Default listen port is `8793`.
 - `/ws` uses WebSocket UTF-8 text and CRLF output lines.

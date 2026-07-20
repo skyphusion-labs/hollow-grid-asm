@@ -35,16 +35,16 @@ client -> libwebsockets -> tiny C ABI shim -> NASM engine
                                              |   and command dispatch
                                              +-> world content and the moral
                                              |   arc/economy/rescue systems
-                                             +-> event payloads and
-                                                 persistence/federation seams
+                                             +-> LocalHub memory; C only does
+                                                 RemoteHub HTTP + serialize
 ```
 
-NASM decides every rule: when a command applies, what it mutates, which actions
-appear (and their valence), dream selection, and prune kinds. C is three narrow
-files: `lws_shim.c` (libwebsockets ABI shim), `format.c` (serialize `@event`/
-prose from values asm chose), and `grid_hub.c` (federation HTTP/JSON transport
-and hub storage). C never decides a command, moral menu, or game-rule
-threshold, and never mutates game rules.
+NASM owns every rule and every in-process store that can live there: command
+dispatch, mutations, action menus and valence, dream selection, prune policy,
+LocalHub federation memory, and tide clamp. C is three narrow files:
+`lws_shim.c` (libwebsockets ABI), `format.c` (serialize `@event`/prose from
+values asm chose), and `grid_hub.c` (RemoteHub libcurl/cJSON plus hub-backed
+prose wrappers). C never decides a command, moral menu, or threshold.
 
 ## Repository guide
 

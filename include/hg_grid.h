@@ -3,10 +3,10 @@
 
 /* Federation seam for the Basalt Relay assembly world.
  *
- * C owns HTTP/JSON/libcurl transport and event/prose formatting. ASM owns
- * when to call and player-facing command dispatch (see docs/ARCHITECTURE.md).
- * Every call here is fail-open: a hub error or timeout never blocks local
- * play, it only means the caller falls back to local-only prose.
+ * ASM owns LocalHub memory, tide clamp, prune application, and when to call
+ * the hub. C owns RemoteHub libcurl/cJSON transport and hub-backed prose /
+ * @event wrappers (see docs/ARCHITECTURE.md). Every call here is fail-open:
+ * a hub error or timeout never blocks local play.
  */
 
 #include <stddef.h>

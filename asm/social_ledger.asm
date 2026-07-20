@@ -1,4 +1,4 @@
-; Second-wave social commands (separate object linked with social.asm).
+; Social ledger: regard, deeds, forgiven/kept, cache, steal, look, who.
 default rel
 %include "state.inc"
 

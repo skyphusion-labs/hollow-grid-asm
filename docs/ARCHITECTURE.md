@@ -26,9 +26,10 @@ NASM engine
 ```
 
 The C shim translates libwebsockets callbacks and buffers into a stable
-assembly-facing ABI. It must not decide commands or mutate game rules. JSON
-and prose presentation helpers (`format.c`) and hub HTTP (`grid_hub.c`) may
-format `@event` lines when asm has already decided the outcome.
+assembly-facing ABI. It must not decide commands, thresholds, or LocalHub
+store mutations. `format.c` serializes `@event`/prose from values asm chose.
+`grid_hub.c` owns RemoteHub libcurl/cJSON only; LocalHub memory and tide clamp
+live in NASM (`asm/grid_local.asm`).
 
 ## Engine boundaries
 
@@ -51,30 +52,27 @@ remain planned behind these boundaries.
 
 ## Federation seam
 
-`include/hg_grid.h` + `ffi/grid_hub.c` implement one C API with two modes,
-selected at boot by whether `GRID_HUB_URL` is set:
+`include/hg_grid.h` exposes one API with two modes, selected at boot by
+whether `GRID_HUB_URL` is set:
 
-- **LocalHub** (default, no `GRID_HUB_URL`): in-memory only, always
-  available. Seeded with a few cross-world traces so `listen`/`ping all`
-  have something to say on a fresh boot, plus a hardcoded `listWorlds`
-  (self, Dustfall, Saltreach).
-- **RemoteHub** (`GRID_HUB_URL` set): HTTP POST JSON-RPC over libcurl,
-  `{"method":...,"params":[...]}` -> `{"ok":...,"result":...}`, 2s connect +
-  total timeout, optional `Authorization: Bearer <GRID_HUB_TOKEN>`.
+- **LocalHub** (default, no `GRID_HUB_URL`): in-memory store in
+  `asm/grid_local.asm` (traces, echo, tide, rescued/fallen, casts, seed
+  worlds). Always available. Asm owns mutations and tide clamp.
+- **RemoteHub** (`GRID_HUB_URL` set): HTTP POST JSON-RPC over libcurl in
+  `ffi/grid_hub.c`, `{"method":...,"params":[...]}` -> `{"ok":...,"result":...}`,
+  2s connect + total timeout, optional `Authorization: Bearer <GRID_HUB_TOKEN>`.
 
 Every `hg_grid_*` call is fail-open: a transport error, timeout, or
 malformed response is swallowed and the caller falls back to local-only
-prose (LocalHub's in-memory state, or a plain "the Grid is unreachable"
-line). A hub outage never blocks local play. `hg_grid_federation_tick`,
-called every service-loop iteration from `hg_lws_run`, rate-limits
-best-effort re-registration to roughly once every 10s and is a no-op in
-LocalHub mode.
+prose (LocalHub asm state, or a plain "the Grid is unreachable" line). A hub
+outage never blocks local play. `hg_grid_federation_tick`, called every
+service-loop iteration from `hg_lws_run`, rate-limits best-effort
+re-registration to roughly once every 10s and is a no-op in LocalHub mode.
 
-C owns HTTP/JSON/libcurl transport plus every hub-backed prose and `@event`
-line (the `hg_grid_fmt_*` formatters). ASM owns command dispatch (`world.asm`)
-and the combat/lifecycle hooks that decide *when* to call the hub
-(`combat.asm`'s `kill_hub_record`/`player_died`) -- it never builds JSON or
-HTTP itself.
+C owns RemoteHub HTTP/JSON/libcurl plus hub-backed prose/`@event` wrappers
+(`hg_grid_fmt_*`). ASM owns LocalHub memory, command dispatch, and the
+combat/lifecycle hooks that decide *when* to call the hub. Asm never builds
+HTTP itself; C never decides LocalHub store policy.
 
 `/health/deep` reports `grid_hub` as non-critical: LocalHub always reports
 `ok:true, latency_ms:0`; RemoteHub pings `tide()` and reports the measured
