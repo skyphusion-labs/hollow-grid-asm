@@ -223,8 +223,6 @@ extern hg_announce_cache_now
 extern hg_inv_add_item
 extern hg_grid_fmt_ping_all
 extern hg_grid_fmt_worlds
-extern hg_grid_fmt_travel
-extern hg_grid_fmt_whoami
 extern memcpy
 extern memset
 global hg_world_boot
@@ -250,9 +248,9 @@ global hg_cmd_defend
 global hg_cmd_ping
 global hg_cmd_world
 global hg_cmd_listen
-global hg_cmd_whoami
+extern hg_cmd_whoami
+extern hg_cmd_travel
 global hg_cmd_worlds
-global hg_cmd_travel
 global hg_cmd_title
 global hg_session_pulse
 global hg_session_flush_all
@@ -1386,89 +1384,23 @@ hg_cmd_listen:
     add rsp, 1032
     ret
 
-; whoami / identity: char sheet, with a best-effort hub overlay (loadCharacter)
-; in remote mode. Session fields feed a stack hg_grid_identity_ctx; C owns
-; the prose + @event formatting.
-hg_cmd_whoami:
-    call setup_cmd
-    sub rsp, 600           ; +8 keeps rsp 16-aligned before the C calls below
-    lea rax, [r12 + SESSION_NAME]
-    mov [rsp + 0], rax
-    mov rax, [r12 + SESSION_LEVEL]
-    mov [rsp + 8], rax
-    mov rax, [r12 + SESSION_XP]
-    mov [rsp + 16], rax
-    mov rax, [r12 + SESSION_GOLD]
-    mov [rsp + 24], rax
-    lea rax, [r12 + SESSION_FACTION]
-    mov [rsp + 32], rax
-    mov rax, [r12 + SESSION_MORALITY]
-    mov [rsp + 40], rax
-    lea rax, [r12 + SESSION_TITLE]
-    mov [rsp + 48], rax
-    lea rax, [r12 + SESSION_RACE]
-    mov [rsp + 56], rax
-    mov rax, [r12 + SESSION_ASHSWORN]
-    mov [rsp + 64], rax
-    lea rdi, [rsp + 80]
-    mov esi, 512
-    mov rdx, rsp
-    call hg_grid_fmt_whoami wrt ..plt
-    cmp eax, 0
-    jl .done
-    lea rdx, [rsp + 80]
-    mov ecx, eax
-    mov rdi, r12
-    mov rsi, r13
-    call queue_bytes
-.done:
-    add rsp, 600
-    ret
-
-; worlds: listWorlds, formatted with reachability tags.
+; worlds: listWorlds reachability tags still formatted in C for now.
+global hg_cmd_worlds
 hg_cmd_worlds:
     call setup_cmd
-    sub rsp, 3080          ; +8 keeps rsp 16-aligned before the C call below
+    sub rsp, 3080
     mov rdi, rsp
     mov esi, 3072
     call hg_grid_fmt_worlds wrt ..plt
     cmp eax, 0
-    jl .done
+    jl .worlds_done
     mov rdi, r12
     mov rsi, r13
     mov rdx, rsp
     mov ecx, eax
     call queue_bytes
-.done:
+.worlds_done:
     add rsp, 3080
-    ret
-
-; travel / gate (rdx=target, or NULL to just list worlds): emits the
-; destination handoff, then closes after the queued event is written.
-hg_cmd_travel:
-    call setup_cmd
-    push r14
-    mov r14, rdx
-    sub rsp, 3088
-    mov dword [rsp + 3072], 0
-    mov rdi, rsp
-    mov esi, 3072
-    mov rdx, r14
-    lea rcx, [rsp + 3072]
-    call hg_grid_fmt_travel wrt ..plt
-    cmp eax, 0
-    jl .done
-    mov rdi, r12
-    mov rsi, r13
-    mov rdx, rsp
-    mov ecx, eax
-    call queue_bytes
-    cmp dword [rsp + 3072], 0
-    je .done
-    mov qword [r12 + SESSION_CLOSE], 1
-.done:
-    add rsp, 3088
-    pop r14
     ret
 
 hg_cmd_world:

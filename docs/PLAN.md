@@ -178,6 +178,13 @@ Two Fable-5 reviews (correctness + honest ASM ownership) knocked out on
 - **B7 admin gate (`asm/social_ledger.asm`, `ffi/format.c`):** `hg_is_admin` and
   the `ADMINS` parse are asm (lazy `admins_ensure`, `getenv` + tokenise). The C
   `hg_admins_init` / `hg_is_admin` and the admin string list are deleted.
+- **B8 whoami/travel policy (`asm/grid_policy.asm`, `ffi/grid_hub.c`,
+  `ffi/format.c`):** identity merge (hub `loadCharacter` overlay, ally/front
+  wins over stale hub faction, local title wins if set) and travel target
+  matching (exact case-insensitive, then substring) live in asm. C fetch-only:
+  `hg_grid_list_worlds`, `hg_grid_fetch_character`. C format-only:
+  `hg_fmt_char_identity`, `hg_fmt_grid_travel_*`, `hg_whoami_reply`. Travel
+  world rows and format buffers sit in `.bss` (LWS thread stack is tight).
 - **B9 world id + thresholds:** `@event` world claims (`grid.who`,
   `comm.gridcast`) thread `hg_grid_world_name()` (configured world id) instead of
   a hardcoded literal; `hg_regard_of` documents the intentional precedence
@@ -191,17 +198,16 @@ Two Fable-5 reviews (correctness + honest ASM ownership) knocked out on
   mid-suite; asserts `/health` stays 200, the process never exits, and `whoami`
   fails open to the local self.
 
-**Deferred:** B8 (whoami/travel identity-merge and target-matching policy still
-in `ffi/grid_hub.c`). It is the largest refactor (new struct-returning hub
-accessors + a full asm re-author of both prose surfaces and the merge/matching
-policy) and touches the working federation path; deferring keeps the node green
-and shippable. World-id threading (B9) and the admin gate (B7) already removed
-the adjacent C policy. Tracked as a follow-up.
+**Deferred (C policy, follow-up):** `hg_grid_fmt_worlds` reachability/active/here
+tagging still in C (needs asm re-author like B8). `hg_grid_load_session` login
+apply differs from whoami merge (no ally/front precedence); intentional until a
+single asm identity module owns both paths. `hg_grid_fmt_listen` / `ping_*` hub
+prose wrappers remain in C.
 
-**Verify (rancid, podman, ubuntu:24.04, linux/amd64):**
-`podman build --target build` runs `make check` **green**: foundation
-(persistence, hardening, gameplay, federation), `ws_remote_federation`,
-`ws_localhub_soak`, `ws_remote_hub_resilience`.
+**Verify (rancid, podman, ubuntu:24.04, linux/amd64, 2026-07-20):**
+`make check` **green** on branch `feat/b8-identity-travel-policy-asm`:
+foundation (persistence, hardening, gameplay, federation),
+`ws_remote_federation`, `ws_localhub_soak`, `ws_remote_hub_resilience`.
 
 ## Phase 3: federation
 
