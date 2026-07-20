@@ -3,10 +3,10 @@
 
 /* Federation seam for the Basalt Relay assembly world.
  *
- * C owns HTTP/JSON/libcurl transport and event/prose formatting. ASM owns
- * when to call and player-facing command dispatch (see docs/ARCHITECTURE.md).
- * Every call here is fail-open: a hub error or timeout never blocks local
- * play, it only means the caller falls back to local-only prose.
+ * ASM owns LocalHub memory, tide clamp, prune application, and when to call
+ * the hub. C owns RemoteHub libcurl/cJSON transport and hub-backed prose /
+ * @event wrappers (see docs/ARCHITECTURE.md). Every call here is fail-open:
+ * a hub error or timeout never blocks local play.
  */
 
 #include <stddef.h>
@@ -142,6 +142,10 @@ int hg_grid_recent_fallen(int limit, hg_grid_fallen_row *out, size_t cap,
 int hg_grid_ledger_stats(hg_grid_ledger_row *out, size_t cap,
                         size_t *out_count);
 int hg_grid_prune_ledger(int *removed);
+/* Asm policy: which trace kinds gridprune removes. */
+int hg_prune_kind_ambient(const char *kind);
+int hg_prune_ambient_count(void);
+const char *hg_prune_ambient_at(int index);
 int hg_grid_casts_since(int since_id, int limit, hg_grid_cast_row *out,
                        size_t cap, size_t *out_count);
 int hg_grid_presence(long long max_age_ms, hg_grid_presence_row *out,

@@ -111,7 +111,7 @@ full upstream smoke `2558d00f` -> **153 ok / 0 FAIL / 1 SKIP**
 **Closed 2026-07-19** on `feat/port-social-to-asm` (merge closes #17):
 
 - `ffi/social.c` deleted. Social/economy/comms/moral handlers live in
-  `asm/social.asm`, `asm/social_port2.asm`, `asm/social_port3.asm`.
+  `asm/social.asm`, `asm/social_ledger.asm`, `asm/social_grid.asm`.
 - `forgive` / `witness` rule bodies (marked check, ledgers, morality, deeds,
   redemption title, kept vigil) are asm. Admin gate for `gridstats` /
   `gridprune` is asm.
@@ -129,6 +129,23 @@ redeemed) exactly against protocol assertions. `witness`, `saved`,
 correct `@event` (`grid.fallen`, `grid.rescued_roll`, `grid.ledger_stats`,
 `grid.ledger_pruned`) and prose, and the `gridstats`/`gridprune` admin gate
 (asm `hg_is_admin`) refuses a non-keeper with no ledger data leaked.
+
+### Evidence (honest C/asm boundary, #24)
+
+**In progress** on `fix/asm-actions-menu-boundary` (closes #24):
+
+- `asm/actions.asm` owns action menus/valence, brand standing, dream
+  selection, prune-kind policy.
+- `asm/grid_local.asm` owns LocalHub federation memory (traces, echo, tide,
+  rescued/fallen, casts), tide clamp, prune application, and seed worlds.
+- `asm/social.asm`, `asm/social_ledger.asm`, `asm/social_grid.asm` own social
+  command rules (renamed from social_port2/3).
+- C remaining: `lws_shim.c` (libwebsockets), `format.c` (serialize `@event`/
+  prose from asm-chosen values), `grid_hub.c` (RemoteHub libcurl/cJSON +
+  hub-backed prose wrappers only).
+
+**Verify (rancid, Docker ubuntu:24.04):** `make check` green (foundation,
+gameplay, federation, `ws_remote_federation`) after LocalHub port.
 
 ## Phase 3: federation
 

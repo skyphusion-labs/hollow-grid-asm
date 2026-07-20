@@ -1,9 +1,6 @@
-/* Grid Hub federation client: LocalHub (in-memory, always available) or
- * RemoteHub (HTTP JSON-RPC over libcurl). See include/hg_grid.h.
- *
- * Ownership: this file owns HTTP/JSON/libcurl transport and all event/prose
- * formatting for hub-backed output. It never decides game rules; ASM decides
- * when to call and how to dispatch player commands (docs/ARCHITECTURE.md).
+/* Grid Hub federation client: RemoteHub (libcurl/cJSON) plus prose/@event
+ * wrappers. LocalHub memory, tide clamp, and prune application live in
+ * asm/grid_local.asm. See include/hg_grid.h and docs/ARCHITECTURE.md.
  */
 #include "hg_grid.h"
 #include "hg_session.h"
@@ -18,41 +15,50 @@
 #include <sys/time.h>
 #include <time.h>
 
+/* Asm: LocalHub store + prune kinds. */
+extern int hg_prune_kind_ambient(const char *kind);
+extern int hg_prune_ambient_count(void);
+extern const char *hg_prune_ambient_at(int index);
+extern int hg_grid_local_boot(const char *world_name, const char *world_url);
+extern int hg_grid_local_clear(void);
+extern const char *hg_grid_local_world_name(void);
+extern const char *hg_grid_local_world_url(void);
+extern int hg_grid_local_record(const char *world, const char *node,
+                                const char *kind, const char *text,
+                                long long at_ms);
+extern int hg_grid_record_local_echo(const char *node, const char *kind,
+                                     const char *text);
+extern int hg_grid_local_record_fallen(const char *world, const char *name,
+                                       const char *room, long long at_ms);
+extern int hg_grid_local_record_rescued(const char *world, const char *name,
+                                        const char *saved_by, long long at_ms);
+extern int hg_grid_local_tide(int *out_tide);
+extern int hg_grid_local_shift_tide(int delta, int *out_tide);
+extern int hg_grid_local_gridcast(const char *sender, const char *text);
+extern int hg_grid_local_register_self(void);
+extern int hg_grid_local_prune(int *removed);
+extern int hg_grid_local_recent_rescued(int limit, hg_grid_rescued_row *out,
+                                        size_t cap, size_t *out_count);
+extern int hg_grid_local_recent_fallen(int limit, hg_grid_fallen_row *out,
+                                       size_t cap, size_t *out_count);
+extern int hg_grid_local_ledger_stats(hg_grid_ledger_row *out, size_t cap,
+                                      size_t *out_count);
+extern int hg_grid_local_casts_since(int since_id, int limit,
+                                     hg_grid_cast_row *out, size_t cap,
+                                     size_t *out_count);
+extern int hg_grid_local_echo_count(void);
+extern int hg_grid_local_trace_count(void);
+extern int hg_grid_local_echo_ptrs(int index, const char **node,
+                                   const char **kind, const char **text,
+                                   long long *at);
+extern int hg_grid_local_trace_ptrs(int index, const char **world,
+                                    const char **node, const char **kind,
+                                    const char **text, long long *at);
+extern int hg_grid_local_list_worlds(char *ids, char *urls, long long *seen,
+                                     int cap);
+
 #define HG_RPC_TIMEOUT_MS 2000L
-#define HG_MAX_TRACES 200
-#define HG_MAX_ECHO 128
-#define HG_MAX_RESCUED 200
-#define HG_MAX_FALLEN 200
 #define HG_FEDERATION_TICK_MS 10000LL
-
-typedef struct {
-  char world[48];
-  char node[64];
-  char kind[24];
-  char text[200];
-  long long at;
-} hg_trace;
-
-typedef struct {
-  char node[64];
-  char kind[24];
-  char text[200];
-  long long at;
-} hg_echo;
-
-typedef struct {
-  char world[48];
-  char name[33];
-  char saved_by[33];
-  long long at;
-} hg_rescued;
-
-typedef struct {
-  char world[48];
-  char name[33];
-  char room[32];
-  long long at;
-} hg_fallen;
 
 static struct {
   int booted;
@@ -63,24 +69,6 @@ static struct {
   char token[256];
   CURL *curl;
   int curl_global_owned;
-
-  hg_trace traces[HG_MAX_TRACES];
-  int trace_count;
-  int tide;
-
-  hg_rescued rescued[HG_MAX_RESCUED];
-  int rescued_count;
-  hg_fallen fallen[HG_MAX_FALLEN];
-  int fallen_count;
-
-#define HG_MAX_CASTS 200
-  hg_grid_cast_row casts[HG_MAX_CASTS];
-  int cast_count;
-  int next_cast_id;
-
-  hg_echo echo[HG_MAX_ECHO];
-  int echo_count;
-
   long long last_federation_tick_ms;
 } g;
 
@@ -148,66 +136,6 @@ static int ci_equal(const char *a, const char *b) {
   return *a == '\0' && *b == '\0';
 }
 
-static int clamp_tide(int n) {
-  if (n < -100) {
-    return -100;
-  }
-  if (n > 100) {
-    return 100;
-  }
-  return n;
-}
-
-/* ---------- local echo (always-on, both modes) ---------- */
-
-static void echo_prepend(const char *node, const char *kind, const char *text,
-                         long long at) {
-  int n = g.echo_count < HG_MAX_ECHO ? g.echo_count : HG_MAX_ECHO - 1;
-  for (int i = n; i > 0; --i) {
-    g.echo[i] = g.echo[i - 1];
-  }
-  safe_copy(g.echo[0].node, sizeof(g.echo[0].node), node);
-  safe_copy(g.echo[0].kind, sizeof(g.echo[0].kind), kind);
-  safe_copy(g.echo[0].text, sizeof(g.echo[0].text), text);
-  g.echo[0].at = at;
-  if (g.echo_count < HG_MAX_ECHO) {
-    g.echo_count++;
-  }
-}
-
-/* ---------- LocalHub cross-world memory ---------- */
-
-static void trace_prepend(const char *world, const char *node,
-                          const char *kind, const char *text, long long at) {
-  int n = g.trace_count < HG_MAX_TRACES ? g.trace_count : HG_MAX_TRACES - 1;
-  for (int i = n; i > 0; --i) {
-    g.traces[i] = g.traces[i - 1];
-  }
-  safe_copy(g.traces[0].world, sizeof(g.traces[0].world), world);
-  safe_copy(g.traces[0].node, sizeof(g.traces[0].node), node);
-  safe_copy(g.traces[0].kind, sizeof(g.traces[0].kind), kind);
-  safe_copy(g.traces[0].text, sizeof(g.traces[0].text), text);
-  g.traces[0].at = at;
-  if (g.trace_count < HG_MAX_TRACES) {
-    g.trace_count++;
-  }
-}
-
-static void seed_local_traces(void) {
-  trace_prepend("Dustfall", "the long market", "slain",
-               "a trader put down a chrome-jackal with a length of pipe.", 0);
-  trace_prepend("the Ninth Server", "cell block C", "oath",
-               "someone swore off the dust for the ninth time.", 0);
-  trace_prepend("Saltreach", "the drowned pier", "death",
-               "a runner called Mox bled out, cursing the tide.", 0);
-  /* Ambient noise the keeper can flush with gridprune. */
-  trace_prepend("Basalt Relay", "nexus", "ghost",
-               "a faint cursor blinks once and is gone.", 0);
-  trace_prepend("Basalt Relay", "market", "passage",
-               "someone passed through without leaving a name.", 0);
-  trace_prepend("Basalt Relay", "roof", "recall",
-               "a half-remembered transmission dissolves into static.", 0);
-}
 
 /* ---------- RemoteHub transport ---------- */
 
@@ -332,7 +260,8 @@ int hg_grid_boot(const char *world_name, const char *world_url,
 
   if (hub_url == NULL || hub_url[0] == '\0') {
     g.remote = 0;
-    seed_local_traces();
+    hg_grid_local_boot(g.world_name, g.world_url);
+    g.booted = 1;
     return 0;
   }
 
@@ -346,7 +275,8 @@ int hg_grid_boot(const char *world_name, const char *world_url,
   if (curl_global_init(CURL_GLOBAL_DEFAULT) != 0) {
     /* Fail open to LocalHub rather than failing boot outright. */
     g.remote = 0;
-    seed_local_traces();
+    hg_grid_local_boot(g.world_name, g.world_url);
+    g.booted = 1;
     return 0;
   }
   g.curl_global_owned = 1;
@@ -355,7 +285,8 @@ int hg_grid_boot(const char *world_name, const char *world_url,
     curl_global_cleanup();
     g.curl_global_owned = 0;
     g.remote = 0;
-    seed_local_traces();
+    hg_grid_local_boot(g.world_name, g.world_url);
+    g.booted = 1;
     return 0;
   }
   g.remote = 1;
@@ -372,6 +303,9 @@ void hg_grid_shutdown(void) {
     curl_global_cleanup();
     g.curl_global_owned = 0;
   }
+  hg_grid_local_clear();
+  g.remote = 0;
+  g.booted = 0;
 }
 
 int hg_grid_remote(void) { return g.remote; }
@@ -407,8 +341,7 @@ int hg_grid_record(const char *world, const char *node, const char *kind,
     at_ms = now_ms();
   }
   if (!g.remote) {
-    trace_prepend(world, node, kind, text, at_ms);
-    return 0;
+    return hg_grid_local_record(world, node, kind, text, at_ms);
   }
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params, cJSON_CreateString(world != NULL ? world : ""));
@@ -417,12 +350,6 @@ int hg_grid_record(const char *world, const char *node, const char *kind,
   cJSON_AddItemToArray(params, cJSON_CreateString(text != NULL ? text : ""));
   cJSON_AddItemToArray(params, cJSON_CreateNumber((double)at_ms));
   return rpc_call("record", params, NULL);
-}
-
-int hg_grid_record_local_echo(const char *node, const char *kind,
-                              const char *text) {
-  echo_prepend(node, kind, text, now_ms());
-  return 0;
 }
 
 int hg_grid_inscribe(const char *node, const char *name, const char *msg) {
@@ -442,18 +369,7 @@ int hg_grid_record_fallen(const char *world, const char *name,
     at_ms = now_ms();
   }
   if (!g.remote) {
-    int n = g.fallen_count < HG_MAX_FALLEN ? g.fallen_count : HG_MAX_FALLEN - 1;
-    for (int i = n; i > 0; --i) {
-      g.fallen[i] = g.fallen[i - 1];
-    }
-    safe_copy(g.fallen[0].world, sizeof(g.fallen[0].world), world);
-    safe_copy(g.fallen[0].name, sizeof(g.fallen[0].name), name);
-    safe_copy(g.fallen[0].room, sizeof(g.fallen[0].room), room);
-    g.fallen[0].at = at_ms;
-    if (g.fallen_count < HG_MAX_FALLEN) {
-      g.fallen_count++;
-    }
-    return 0;
+    return hg_grid_local_record_fallen(world, name, room, at_ms);
   }
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params, cJSON_CreateString(world != NULL ? world : ""));
@@ -469,23 +385,7 @@ int hg_grid_record_rescued(const char *world, const char *name,
     at_ms = now_ms();
   }
   if (!g.remote) {
-    int n = g.rescued_count < HG_MAX_RESCUED ? g.rescued_count
-                                             : HG_MAX_RESCUED - 1;
-    for (int i = n; i > 0; --i) {
-      g.rescued[i] = g.rescued[i - 1];
-    }
-    safe_copy(g.rescued[0].world, sizeof(g.rescued[0].world), world);
-    safe_copy(g.rescued[0].name, sizeof(g.rescued[0].name), name);
-    safe_copy(g.rescued[0].saved_by, sizeof(g.rescued[0].saved_by), saved_by);
-    g.rescued[0].at = at_ms;
-    if (g.rescued_count < HG_MAX_RESCUED) {
-      g.rescued_count++;
-    }
-    char text[256];
-    snprintf(text, sizeof(text), "%s freed by %s",
-             name != NULL ? name : "", saved_by != NULL ? saved_by : "");
-    trace_prepend(world, "rescued", "rescue", text, at_ms);
-    return 0;
+    return hg_grid_local_record_rescued(world, name, saved_by, at_ms);
   }
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params, cJSON_CreateString(world != NULL ? world : ""));
@@ -516,15 +416,7 @@ int hg_grid_on_death(const char *room_id, const char *name) {
 
 int hg_grid_register_self(void) {
   if (!g.remote) {
-    for (int i = 0; i < g.trace_count; ++i) {
-      if (strcmp(g.traces[i].world, g.world_name) == 0) {
-        safe_copy(g.traces[i].node, sizeof(g.traces[i].node), g.world_url);
-        return 0;
-      }
-    }
-    trace_prepend(g.world_name, g.world_url, "register",
-                 "a new node joined the network.", now_ms());
-    return 0;
+    return hg_grid_local_register_self();
   }
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params, cJSON_CreateString(g.world_name));
@@ -579,26 +471,14 @@ typedef struct {
 
 static int list_worlds(hg_world_row *out, int cap) {
   if (!g.remote) {
-    int n = 0;
-    long long now = now_ms();
-    if (n < cap) {
-      safe_copy(out[n].id, sizeof(out[n].id), "Saltreach");
-      safe_copy(out[n].url, sizeof(out[n].url), "wss://saltreach.example/ws");
-      out[n].last_seen = 0;
-      n++;
-    }
-    if (n < cap) {
-      safe_copy(out[n].id, sizeof(out[n].id), "Dustfall");
-      safe_copy(out[n].url, sizeof(out[n].url),
-               "wss://dustfall.skyphusion.org/ws");
-      out[n].last_seen = now;
-      n++;
-    }
-    if (n < cap) {
-      safe_copy(out[n].id, sizeof(out[n].id), g.world_name);
-      safe_copy(out[n].url, sizeof(out[n].url), g.world_url);
-      out[n].last_seen = now;
-      n++;
+    char ids[8][48];
+    char urls[8][160];
+    long long seen[8];
+    int n = hg_grid_local_list_worlds(&ids[0][0], &urls[0][0], seen, cap < 8 ? cap : 8);
+    for (int i = 0; i < n; ++i) {
+      safe_copy(out[i].id, sizeof(out[i].id), ids[i]);
+      safe_copy(out[i].url, sizeof(out[i].url), urls[i]);
+      out[i].last_seen = seen[i];
     }
     return n;
   }
@@ -785,22 +665,36 @@ int hg_grid_fmt_travel(char *buf, size_t cap, const char *target,
 
 int hg_grid_fmt_listen(char *buf, size_t cap) {
   size_t off = 0;
-  if (g.echo_count > 0) {
-    const hg_echo *e = &g.echo[rand() % g.echo_count];
+  int echo_n = hg_grid_local_echo_count();
+  if (echo_n > 0) {
+    const char *node = NULL;
+    const char *kind = NULL;
+    const char *etext = NULL;
+    long long at = 0;
+    int idx = rand() % echo_n;
+    if (hg_grid_local_echo_ptrs(idx, &node, &kind, &etext, &at) != 0) {
+      etext = "";
+    }
+    (void)node;
+    (void)kind;
     char esc[220];
-    json_escape(esc, sizeof(esc), e->text);
+    json_escape(esc, sizeof(esc), etext);
     if (append(buf, cap, &off,
               "You go still and tune the dead frequencies. The static "
               "thins, and the network plays something back -- a memory it "
               "never let go of:\r\n  >> %s <<\r\n"
               "@event grid.transmission {\"kind\":\"echo\",\"text\":\"%s\"}\r\n",
-              e->text, esc) != 0) {
+              etext, esc) != 0) {
       return -1;
     }
     return (int)off;
   }
-  hg_trace remote_trace = {0};
-  const hg_trace *t = NULL;
+  char world[48] = {0};
+  char node[64] = {0};
+  char kind[24] = {0};
+  char ttext[200] = {0};
+  long long at = 0;
+  int have = 0;
   if (g.remote) {
     cJSON *params = cJSON_CreateArray();
     cJSON_AddItemToArray(params, cJSON_CreateNumber(20));
@@ -810,38 +704,48 @@ int hg_grid_fmt_listen(char *buf, size_t cap) {
       const cJSON *row =
           count > 0 ? cJSON_GetArrayItem(result, rand() % count) : NULL;
       if (cJSON_IsObject(row)) {
-        safe_copy(remote_trace.world, sizeof(remote_trace.world),
-                  json_str(row, "world"));
-        safe_copy(remote_trace.node, sizeof(remote_trace.node),
-                  json_str(row, "node"));
-        safe_copy(remote_trace.kind, sizeof(remote_trace.kind),
-                  json_str(row, "kind"));
-        safe_copy(remote_trace.text, sizeof(remote_trace.text),
-                  json_str(row, "text"));
-        remote_trace.at = json_ll(row, "at");
-        if (remote_trace.text[0] != '\0') {
-          t = &remote_trace;
+        safe_copy(world, sizeof(world), json_str(row, "world"));
+        safe_copy(node, sizeof(node), json_str(row, "node"));
+        safe_copy(kind, sizeof(kind), json_str(row, "kind"));
+        safe_copy(ttext, sizeof(ttext), json_str(row, "text"));
+        at = json_ll(row, "at");
+        if (ttext[0] != '\0') {
+          have = 1;
         }
       }
     }
     cJSON_Delete(result);
-  } else if (g.trace_count > 0) {
-    t = &g.traces[rand() % g.trace_count];
+  } else if (hg_grid_local_trace_count() > 0) {
+    const char *w = NULL;
+    const char *n = NULL;
+    const char *k = NULL;
+    const char *t = NULL;
+    int idx = rand() % hg_grid_local_trace_count();
+    if (hg_grid_local_trace_ptrs(idx, &w, &n, &k, &t, &at) == 0) {
+      safe_copy(world, sizeof(world), w);
+      safe_copy(node, sizeof(node), n);
+      safe_copy(kind, sizeof(kind), k);
+      safe_copy(ttext, sizeof(ttext), t);
+      have = 1;
+    }
   }
-  if (t != NULL) {
+  (void)node;
+  (void)kind;
+  (void)at;
+  if (have) {
     char esc[220];
-    json_escape(esc, sizeof(esc), t->text);
+    json_escape(esc, sizeof(esc), ttext);
     if (append(buf, cap, &off,
               "You go still and tune the dead frequencies. The static "
               "thins, and the network plays something back -- a memory it "
               "never let go of:\r\n  >> %s <<\r\n",
-              t->text) != 0) {
+              ttext) != 0) {
       return -1;
     }
-    if (strcmp(t->world, g.world_name) != 0 && t->world[0] != '\0') {
+    if (strcmp(world, g.world_name) != 0 && world[0] != '\0') {
       if (append(buf, cap, &off,
                 "  (...the signal carries from somewhere called %s)\r\n",
-                t->world) != 0) {
+                world) != 0) {
         return -1;
       }
     }
@@ -864,11 +768,24 @@ int hg_grid_fmt_listen(char *buf, size_t cap) {
 
 int hg_grid_fmt_ping_echo(char *buf, size_t cap, const char *room_id) {
   size_t off = 0;
-  const hg_echo *rows[6];
+  const char *texts[6];
+  const char *kinds[6];
+  long long ats[6];
   int n = 0;
-  for (int i = 0; i < g.echo_count && n < 6; ++i) {
-    if (strcmp(g.echo[i].node, room_id) == 0) {
-      rows[n++] = &g.echo[i];
+  int echo_n = hg_grid_local_echo_count();
+  for (int i = 0; i < echo_n && n < 6; ++i) {
+    const char *node = NULL;
+    const char *kind = NULL;
+    const char *etext = NULL;
+    long long at = 0;
+    if (hg_grid_local_echo_ptrs(i, &node, &kind, &etext, &at) != 0) {
+      continue;
+    }
+    if (node != NULL && room_id != NULL && strcmp(node, room_id) == 0) {
+      texts[n] = etext;
+      kinds[n] = kind;
+      ats[n] = at;
+      n++;
     }
   }
   char json[1536];
@@ -890,16 +807,16 @@ int hg_grid_fmt_ping_echo(char *buf, size_t cap, const char *room_id) {
       return -1;
     }
     for (int i = 0; i < n; ++i) {
-      if (append(buf, cap, &off, "  - %s\r\n", rows[i]->text) != 0) {
+      if (append(buf, cap, &off, "  - %s\r\n", texts[i]) != 0) {
         return -1;
       }
       char esc[220];
-      json_escape(esc, sizeof(esc), rows[i]->text);
+      json_escape(esc, sizeof(esc), texts[i]);
       char kesc[32];
-      json_escape(kesc, sizeof(kesc), rows[i]->kind);
+      json_escape(kesc, sizeof(kesc), kinds[i] != NULL ? kinds[i] : "");
       if (append(json, sizeof(json), &joff,
                 "%s{\"kind\":\"%s\",\"text\":\"%s\",\"at\":%lld}",
-                i == 0 ? "" : ",", kesc, esc, rows[i]->at) != 0) {
+                i == 0 ? "" : ",", kesc, esc, ats[i]) != 0) {
         return -1;
       }
     }
@@ -922,12 +839,30 @@ int hg_grid_fmt_ping_echo(char *buf, size_t cap, const char *room_id) {
 
 int hg_grid_fmt_ping_all(char *buf, size_t cap) {
   size_t off = 0;
-  hg_trace rows[8];
+  char worlds[8][48];
+  char nodes[8][64];
+  char kinds[8][24];
+  char texts[8][200];
+  long long ats[8];
   int n = 0;
   if (!g.remote) {
-    for (int i = 0; i < g.trace_count && n < 8; ++i) {
-      if (strcmp(g.traces[i].world, g.world_name) != 0) {
-        rows[n++] = g.traces[i];
+    int tc = hg_grid_local_trace_count();
+    for (int i = 0; i < tc && n < 8; ++i) {
+      const char *w = NULL;
+      const char *node = NULL;
+      const char *kind = NULL;
+      const char *t = NULL;
+      long long at = 0;
+      if (hg_grid_local_trace_ptrs(i, &w, &node, &kind, &t, &at) != 0) {
+        continue;
+      }
+      if (w != NULL && strcmp(w, g.world_name) != 0) {
+        safe_copy(worlds[n], sizeof(worlds[n]), w);
+        safe_copy(nodes[n], sizeof(nodes[n]), node);
+        safe_copy(kinds[n], sizeof(kinds[n]), kind);
+        safe_copy(texts[n], sizeof(texts[n]), t);
+        ats[n] = at;
+        n++;
       }
     }
   } else {
@@ -942,11 +877,11 @@ int hg_grid_fmt_ping_all(char *buf, size_t cap) {
         if (n >= 8) {
           break;
         }
-        safe_copy(rows[n].world, sizeof(rows[n].world), json_str(row, "world"));
-        safe_copy(rows[n].node, sizeof(rows[n].node), json_str(row, "node"));
-        safe_copy(rows[n].kind, sizeof(rows[n].kind), json_str(row, "kind"));
-        safe_copy(rows[n].text, sizeof(rows[n].text), json_str(row, "text"));
-        rows[n].at = json_ll(row, "at");
+        safe_copy(worlds[n], sizeof(worlds[n]), json_str(row, "world"));
+        safe_copy(nodes[n], sizeof(nodes[n]), json_str(row, "node"));
+        safe_copy(kinds[n], sizeof(kinds[n]), json_str(row, "kind"));
+        safe_copy(texts[n], sizeof(texts[n]), json_str(row, "text"));
+        ats[n] = json_ll(row, "at");
         n++;
       }
     }
@@ -973,22 +908,21 @@ int hg_grid_fmt_ping_all(char *buf, size_t cap) {
     return -1;
   }
   for (int i = 0; i < n; ++i) {
-    if (append(buf, cap, &off, "  - [%s] %s\r\n", rows[i].world,
-              rows[i].text) != 0) {
+    if (append(buf, cap, &off, "  - [%s] %s\r\n", worlds[i], texts[i]) != 0) {
       return -1;
     }
     char wesc[64];
     char nesc[80];
     char kesc[32];
     char tesc[220];
-    json_escape(wesc, sizeof(wesc), rows[i].world);
-    json_escape(nesc, sizeof(nesc), rows[i].node);
-    json_escape(kesc, sizeof(kesc), rows[i].kind);
-    json_escape(tesc, sizeof(tesc), rows[i].text);
+    json_escape(wesc, sizeof(wesc), worlds[i]);
+    json_escape(nesc, sizeof(nesc), nodes[i]);
+    json_escape(kesc, sizeof(kesc), kinds[i]);
+    json_escape(tesc, sizeof(tesc), texts[i]);
     if (append(json, sizeof(json), &joff,
               "%s{\"world\":\"%s\",\"node\":\"%s\",\"kind\":\"%s\","
               "\"text\":\"%s\",\"at\":%lld}",
-              i == 0 ? "" : ",", wesc, nesc, kesc, tesc, rows[i].at) != 0) {
+              i == 0 ? "" : ",", wesc, nesc, kesc, tesc, ats[i]) != 0) {
       return -1;
     }
   }
@@ -1092,10 +1026,7 @@ int hg_grid_fmt_whoami(char *buf, size_t cap, const hg_grid_identity_ctx *ctx) {
 
 int hg_grid_tide(int *out_tide) {
   if (!g.remote) {
-    if (out_tide != NULL) {
-      *out_tide = g.tide;
-    }
-    return 0;
+    return hg_grid_local_tide(out_tide);
   }
   cJSON *result = NULL;
   if (rpc_call("tide", cJSON_CreateArray(), &result) != 0) {
@@ -1110,11 +1041,7 @@ int hg_grid_tide(int *out_tide) {
 
 int hg_grid_shift_tide(int delta, int *out_tide) {
   if (!g.remote) {
-    g.tide = clamp_tide(g.tide + delta);
-    if (out_tide != NULL) {
-      *out_tide = g.tide;
-    }
-    return 0;
+    return hg_grid_local_shift_tide(delta, out_tide);
   }
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params, cJSON_CreateNumber(delta));
@@ -1131,16 +1058,7 @@ int hg_grid_shift_tide(int delta, int *out_tide) {
 
 int hg_grid_gridcast(const char *sender, const char *text) {
   if (!g.remote) {
-    hg_grid_cast_row *row = &g.casts[g.cast_count % HG_MAX_CASTS];
-    g.next_cast_id++;
-    row->id = g.next_cast_id;
-    safe_copy(row->world, sizeof(row->world), g.world_name);
-    safe_copy(row->sender, sizeof(row->sender), sender);
-    safe_copy(row->text, sizeof(row->text), text);
-    if (g.cast_count < HG_MAX_CASTS) {
-      g.cast_count++;
-    }
-    return 0;
+    return hg_grid_local_gridcast(sender, text);
   }
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params, cJSON_CreateString(g.world_name));
@@ -1155,19 +1073,7 @@ int hg_grid_casts_since(int since_id, int limit, hg_grid_cast_row *out,
     *out_count = 0;
   }
   if (!g.remote) {
-    size_t n = 0;
-    for (int i = 0; i < g.cast_count && n < cap; ++i) {
-      if (g.casts[i].id > since_id) {
-        out[n++] = g.casts[i];
-      }
-    }
-    if (limit > 0 && n > (size_t)limit) {
-      n = (size_t)limit;
-    }
-    if (out_count != NULL) {
-      *out_count = n;
-    }
-    return 0;
+    return hg_grid_local_casts_since(since_id, limit, out, cap, out_count);
   }
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params, cJSON_CreateNumber(since_id));
@@ -1324,21 +1230,7 @@ int hg_grid_recent_rescued(int limit, hg_grid_rescued_row *out, size_t cap,
     *out_count = 0;
   }
   if (!g.remote) {
-    size_t n = (size_t)g.rescued_count < cap ? (size_t)g.rescued_count : cap;
-    if (limit > 0 && n > (size_t)limit) {
-      n = (size_t)limit;
-    }
-    for (size_t i = 0; i < n; ++i) {
-      safe_copy(out[i].world, sizeof(out[i].world), g.rescued[i].world);
-      safe_copy(out[i].name, sizeof(out[i].name), g.rescued[i].name);
-      safe_copy(out[i].saved_by, sizeof(out[i].saved_by),
-               g.rescued[i].saved_by);
-      out[i].at = g.rescued[i].at;
-    }
-    if (out_count != NULL) {
-      *out_count = n;
-    }
-    return 0;
+    return hg_grid_local_recent_rescued(limit, out, cap, out_count);
   }
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params, cJSON_CreateNumber(limit));
@@ -1376,20 +1268,7 @@ int hg_grid_recent_fallen(int limit, hg_grid_fallen_row *out, size_t cap,
     *out_count = 0;
   }
   if (!g.remote) {
-    size_t n = (size_t)g.fallen_count < cap ? (size_t)g.fallen_count : cap;
-    if (limit > 0 && n > (size_t)limit) {
-      n = (size_t)limit;
-    }
-    for (size_t i = 0; i < n; ++i) {
-      safe_copy(out[i].world, sizeof(out[i].world), g.fallen[i].world);
-      safe_copy(out[i].name, sizeof(out[i].name), g.fallen[i].name);
-      safe_copy(out[i].room, sizeof(out[i].room), g.fallen[i].room);
-      out[i].at = g.fallen[i].at;
-    }
-    if (out_count != NULL) {
-      *out_count = n;
-    }
-    return 0;
+    return hg_grid_local_recent_fallen(limit, out, cap, out_count);
   }
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params, cJSON_CreateNumber(limit));
@@ -1426,27 +1305,7 @@ int hg_grid_ledger_stats(hg_grid_ledger_row *out, size_t cap,
     *out_count = 0;
   }
   if (!g.remote) {
-    /* Local ledger stats are a courtesy tally of the cross-world trace kinds
-     * this node has seen; not authoritative like a real hub. */
-    size_t n = 0;
-    for (int i = 0; i < g.trace_count; ++i) {
-      size_t j = 0;
-      for (; j < n; ++j) {
-        if (strcmp(out[j].kind, g.traces[i].kind) == 0) {
-          out[j].count++;
-          break;
-        }
-      }
-      if (j == n && n < cap) {
-        safe_copy(out[n].kind, sizeof(out[n].kind), g.traces[i].kind);
-        out[n].count = 1;
-        n++;
-      }
-    }
-    if (out_count != NULL) {
-      *out_count = n;
-    }
-    return 0;
+    return hg_grid_local_ledger_stats(out, cap, out_count);
   }
   cJSON *result = NULL;
   if (rpc_call("ledgerStats", cJSON_CreateArray(), &result) != 0) {
@@ -1474,30 +1333,17 @@ int hg_grid_ledger_stats(hg_grid_ledger_row *out, size_t cap,
 
 int hg_grid_prune_ledger(int *removed) {
   if (!g.remote) {
-    int before = g.trace_count;
-    int write = 0;
-    for (int i = 0; i < g.trace_count; ++i) {
-      const char *kind = g.traces[i].kind;
-      if (strcmp(kind, "ghost") == 0 || strcmp(kind, "passage") == 0 ||
-          strcmp(kind, "recall") == 0) {
-        continue;
-      }
-      if (write != i) {
-        g.traces[write] = g.traces[i];
-      }
-      write++;
-    }
-    g.trace_count = write;
-    if (removed != NULL) {
-      *removed = before - write;
-    }
-    return 0;
+    return hg_grid_local_prune(removed);
   }
   cJSON *params = cJSON_CreateArray();
   cJSON *kinds = cJSON_CreateArray();
-  cJSON_AddItemToArray(kinds, cJSON_CreateString("ghost"));
-  cJSON_AddItemToArray(kinds, cJSON_CreateString("passage"));
-  cJSON_AddItemToArray(kinds, cJSON_CreateString("recall"));
+  int n = hg_prune_ambient_count();
+  for (int i = 0; i < n; ++i) {
+    const char *k = hg_prune_ambient_at(i);
+    if (k != NULL) {
+      cJSON_AddItemToArray(kinds, cJSON_CreateString(k));
+    }
+  }
   cJSON_AddItemToArray(params, kinds);
   cJSON *result = NULL;
   if (rpc_call("pruneLedgerKinds", params, &result) != 0) {
