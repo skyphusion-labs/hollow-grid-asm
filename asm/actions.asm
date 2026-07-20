@@ -424,8 +424,8 @@ hg_dream_compose:
     test rax, rax
     jz .dr_pers_ok
     mov rdi, r15
-    mov rsi, rax
-    lea rdx, [r12 + SESSION_LAST_FREED]
+    lea rsi, [r12 + SESSION_LAST_FREED]
+    mov rdx, rax
     call strncpy wrt ..plt
     mov rax, [rsp]
     test rax, rax
