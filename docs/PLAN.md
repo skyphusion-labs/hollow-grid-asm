@@ -189,11 +189,20 @@ Two Fable-5 reviews (correctness + honest ASM ownership) knocked out on
   `ffi/format.c`, `ffi/grid_hub.c`):** worlds reachability/active/here tagging
   and listen source selection (local echo vs remote `recent` vs local trace) live
   in asm. Login-time `hg_grid_load_session` merge (ally/front wins, local title
-  wins; resume only when hub race is set) lives in C with the same merge rules as
-  whoami. C fetch-only: `hg_grid_fetch_recent*`, `hg_grid_fetch_character`,
+  wins; resume only when hub race is set) lived in C with the same merge rules as
+  whoami through B9. C fetch-only: `hg_grid_fetch_recent*`, `hg_grid_fetch_character`,
   `hg_grid_local_trace_at`. C format-only: `hg_fmt_grid_worlds*`,
-  `hg_fmt_grid_listen_*`, `hg_fmt_grid_ping_*`. C row materialization:
+  `hg_fmt_grid_listen_*`, `hg_fmt_grid_ping_*`. C row materialization through B9:
   `hg_grid_listen_*_at`, `hg_grid_assemble_ping_*` (asm dispatches branches).
+- **B10 ping/listen/load_session policy (`asm/grid_policy.asm`,
+  `ffi/grid_hub.c`):** `ping` / `ping all` echo and federation trace collection,
+  listen row fetch + format dispatch, and login-time `hg_grid_load_session`
+  identity merge (ally/front precedence, local title wins; hub resume gated on
+  non-empty race) live in asm using the B8/B9 identity helpers. C fetch-only:
+  `hg_grid_fetch_recent*`, `hg_grid_fetch_character`, `hg_grid_local_trace_at`,
+  `hg_grid_local_echo_ptrs`. C format-only unchanged. Stack uses explicit
+  16-byte alignment before multi-out-pointer C calls (`sub rsp, 8` where pushes
+  would misalign).
 - **B9 world id + thresholds:** `@event` world claims (`grid.who`,
   `comm.gridcast`) thread `hg_grid_world_name()` (configured world id) instead of
   a hardcoded literal; `hg_regard_of` documents the intentional precedence
@@ -207,13 +216,14 @@ Two Fable-5 reviews (correctness + honest ASM ownership) knocked out on
   mid-suite; asserts `/health` stays 200, the process never exits, and `whoami`
   fails open to the local self.
 
-**Deferred (C policy, follow-up):** `ping` / `ping all` echo collection still uses
-`hg_grid_assemble_ping_echo` / `hg_grid_assemble_ping_all` in C (asm dispatches
-those branches). Listen row fetch + format uses `hg_grid_listen_*_at` in C (asm
-keeps branch/index selection). `hg_grid_load_session` merge lives in C (same
-rules as asm whoami; hub resume gated on non-empty race like pre-B9). Re-author
-those paths into asm when multi-out-pointer and 16-byte stack discipline are
-stable.
+**Deferred (C policy, follow-up):** none from the B9 federation presentation
+slice; next honest boundary work is any remaining hub-backed command wiring not
+yet ported (see Phase 3 list in this file).
+
+**Verify (rancid, podman, ubuntu:24.04, linux/amd64, 2026-07-20):**
+`make check` **green** on branch `feat/b10-ping-listen-loadsession-asm`:
+foundation (persistence, hardening, gameplay, federation),
+`ws_remote_federation`, `ws_localhub_soak`, `ws_remote_hub_resilience`.
 
 **Verify (rancid, podman, ubuntu:24.04, linux/amd64, 2026-07-20):**
 `make check` **green** on branch `feat/b9-grid-worlds-session-policy-asm`:

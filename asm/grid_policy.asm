@@ -50,10 +50,22 @@ default rel
 %define WHO_HUB_OFF 128
 %define WHO_FRAME 328
 %define TRAV_FRAME 16
+%define LOAD_HUB_OFF 128
+%define LOAD_FRAME 256
 %define POLICY_BUF_SIZE 3072
 %define LISTEN_FETCH_LIMIT 20
 %define PING_ALL_LIMIT 8
 %define PING_ECHO_MAX 6
+%define PING_CALL_SLOT 0
+%define PING_TEXTS_OFF 16
+%define PING_KINDS_OFF 64
+%define PING_ATS_OFF 112
+%define PING_NODE_OFF 160
+%define PING_KINDPTR_OFF 168
+%define PING_TEXTPTR_OFF 176
+%define PING_ATVAL_OFF 184
+%define PING_COUNT_OFF 192
+%define PING_ECHO_FRAME 208
 
 section .bss
 align 16
@@ -82,11 +94,9 @@ extern strncpy, strcasecmp, strcmp, strstr, tolower, rand, memcpy
 extern hg_grid_remote, hg_grid_world_name, hg_grid_list_worlds
 extern hg_grid_fetch_character
 extern hg_grid_fetch_recent, hg_grid_fetch_recent_across
-extern hg_grid_listen_echo_at, hg_grid_listen_local_trace_at
-extern hg_grid_listen_remote_recent_count, hg_grid_listen_remote_recent_at
 extern hg_grid_local_trace_at
 extern hg_grid_local_echo_count, hg_grid_local_echo_ptrs
-extern hg_grid_local_trace_count, hg_grid_local_trace_ptrs
+extern hg_grid_local_trace_count
 extern hg_room_id
 extern hg_now_ms
 extern hg_whoami_reply
@@ -94,8 +104,9 @@ extern hg_fmt_grid_travel_unreachable
 extern hg_fmt_grid_travel_missing, hg_fmt_grid_travel_here
 extern hg_fmt_grid_travel_handoff
 extern hg_fmt_grid_worlds_unreachable, hg_fmt_grid_worlds
-extern hg_fmt_grid_listen_empty
-extern hg_grid_assemble_ping_all, hg_grid_assemble_ping_echo
+extern hg_fmt_grid_listen_empty, hg_fmt_grid_listen_echo
+extern hg_fmt_grid_listen_trace
+extern hg_fmt_grid_ping_echo, hg_fmt_grid_ping_all
 extern hg_session_queue
 extern setup_cmd, queue_cstr_h
 
@@ -104,6 +115,7 @@ global hg_cmd_travel
 global hg_cmd_worlds
 global hg_cmd_listen
 global hg_cmd_ping
+global hg_grid_load_session
 
 ; r12=session, r13=wsi, rdx=buf, rcx=len
 queue_buf_h:
@@ -568,10 +580,21 @@ hg_cmd_listen:
     call rand wrt ..plt
     cdq
     idiv r14d
+    mov edi, edx
+    sub rsp, 32
+    lea rsi, [rsp]
+    lea rdx, [rsp + 8]
+    lea rcx, [rsp + 16]
+    lea r8, [rsp + 24]
+    call hg_grid_local_echo_ptrs wrt ..plt
+    cmp eax, 0
+    jl .listen_echo_bad
+    mov rdx, [rsp + 16]
     lea rdi, [rel policy_buf]
     mov esi, POLICY_BUF_SIZE
-    mov edx, edx
-    call hg_grid_listen_echo_at wrt ..plt
+    call hg_fmt_grid_listen_echo wrt ..plt
+.listen_echo_bad:
+    add rsp, 32
     jmp .listen_emit
 .listen_not_echo:
     call hg_grid_remote wrt ..plt
@@ -584,13 +607,25 @@ hg_cmd_listen:
     call rand wrt ..plt
     cdq
     idiv r14d
+    mov edi, edx
+    lea rsi, [rel policy_recent]
+    call hg_grid_local_trace_at wrt ..plt
+    cmp eax, 0
+    jl .listen_empty
+    call hg_grid_world_name wrt ..plt
+    mov r8, rax
+    lea rdx, [rel policy_recent + TRACE_TEXT_OFF]
+    lea rcx, [rel policy_recent + TRACE_WORLD_OFF]
     lea rdi, [rel policy_buf]
     mov esi, POLICY_BUF_SIZE
-    mov edx, edx
-    call hg_grid_listen_local_trace_at wrt ..plt
+    call hg_fmt_grid_listen_trace wrt ..plt
     jmp .listen_emit
 .listen_remote:
-    call hg_grid_listen_remote_recent_count wrt ..plt
+    mov edi, LISTEN_FETCH_LIMIT
+    lea rsi, [rel policy_recent]
+    mov edx, LISTEN_FETCH_LIMIT
+    lea rcx, [rsp]
+    call hg_grid_fetch_recent wrt ..plt
     cmp eax, 0
     jl .listen_empty
     mov r14d, eax
@@ -599,10 +634,16 @@ hg_cmd_listen:
     call rand wrt ..plt
     cdq
     idiv r14d
+    movsxd rbx, edx
+    imul rbx, TRACE_ROW_SIZE
+    call hg_grid_world_name wrt ..plt
+    mov r8, rax
+    lea r10, [rel policy_recent]
+    lea rdx, [r10 + rbx + TRACE_TEXT_OFF]
+    lea rcx, [r10 + rbx + TRACE_WORLD_OFF]
     lea rdi, [rel policy_buf]
     mov esi, POLICY_BUF_SIZE
-    mov edx, edx
-    call hg_grid_listen_remote_recent_at wrt ..plt
+    call hg_fmt_grid_listen_trace wrt ..plt
     jmp .listen_emit
 .listen_empty:
     lea rdi, [rel policy_buf]
@@ -621,7 +662,9 @@ hg_cmd_listen:
 hg_cmd_ping:
     call setup_cmd
     push r14
-    sub rsp, 1040
+    push r15
+    sub rsp, 8
+    sub rsp, PING_ECHO_FRAME
     mov r14, rdx
     test r14, r14
     jz .ping_room
@@ -630,18 +673,116 @@ hg_cmd_ping:
     call strcasecmp wrt ..plt
     test eax, eax
     jnz .ping_room
+    call hg_grid_remote wrt ..plt
+    test eax, eax
+    jnz .ping_all_remote
+    xor r15d, r15d
+    call hg_grid_local_trace_count wrt ..plt
+    mov r14d, eax
+    xor ebx, ebx
+.ping_all_local:
+    cmp ebx, r14d
+    jge .ping_all_fmt
+    cmp r15d, PING_ALL_LIMIT
+    jge .ping_all_fmt
+    mov edi, ebx
+    movsxd rax, r15d
+    imul rax, TRACE_ROW_SIZE
+    lea r10, [rel policy_ping_all]
+    lea rsi, [r10 + rax]
+    call hg_grid_local_trace_at wrt ..plt
+    cmp eax, 0
+    jl .ping_all_next
+    movsxd rax, r15d
+    imul rax, TRACE_ROW_SIZE
+    lea r10, [rel policy_ping_all]
+    lea rdi, [r10 + rax + TRACE_WORLD_OFF]
+    push rdi
+    call hg_grid_world_name wrt ..plt
+    mov rsi, rax
+    pop rdi
+    call strcmp wrt ..plt
+    test eax, eax
+    jz .ping_all_next
+    cmp byte [rdi], 0
+    je .ping_all_next
+    inc r15d
+.ping_all_next:
+    inc ebx
+    jmp .ping_all_local
+.ping_all_remote:
+    lea rdi, [rel policy_ping_all]
+    mov esi, PING_ALL_LIMIT
+    mov edx, PING_ALL_LIMIT
+    lea rcx, [rsp + 160]
+    call hg_grid_fetch_recent_across wrt ..plt
+    cmp eax, 0
+    jl .ping_all_zero
+    mov r15d, eax
+    cmp r15d, PING_ALL_LIMIT
+    jle .ping_all_fmt
+    mov r15d, PING_ALL_LIMIT
+    jmp .ping_all_fmt
+.ping_all_zero:
+    xor r15d, r15d
+.ping_all_fmt:
     lea rdi, [rel policy_buf]
     mov esi, POLICY_BUF_SIZE
-    call hg_grid_assemble_ping_all wrt ..plt
+    lea rdx, [rel policy_ping_all]
+    mov ecx, r15d
+    call hg_fmt_grid_ping_all wrt ..plt
     jmp .ping_emit
 .ping_room:
     mov rdi, [r12 + SESSION_ROOM]
     call hg_room_id
-    mov rdx, rax
+    mov r15, rax
+    mov dword [rsp + PING_COUNT_OFF], 0
+    xor ebx, ebx
+    call hg_grid_local_echo_count wrt ..plt
+    mov r14d, eax
+.ping_echo_loop:
+    cmp ebx, r14d
+    jge .ping_echo_fmt
+    cmp dword [rsp + PING_COUNT_OFF], PING_ECHO_MAX
+    jge .ping_echo_fmt
+    mov edi, ebx
+    lea rsi, [rsp + PING_NODE_OFF]
+    lea rdx, [rsp + PING_KINDPTR_OFF]
+    lea rcx, [rsp + PING_TEXTPTR_OFF]
+    lea r8, [rsp + PING_ATVAL_OFF]
+    call hg_grid_local_echo_ptrs wrt ..plt
+    cmp eax, 0
+    jl .ping_echo_next
+    mov rdi, [rsp + PING_NODE_OFF]
+    test rdi, rdi
+    jz .ping_echo_next
+    test r15, r15
+    jz .ping_echo_next
+    mov rsi, r15
+    call strcmp wrt ..plt
+    test eax, eax
+    jnz .ping_echo_next
+    mov eax, [rsp + PING_COUNT_OFF]
+    mov rcx, [rsp + PING_TEXTPTR_OFF]
+    mov [rsp + PING_TEXTS_OFF + rax * 8], rcx
+    mov rcx, [rsp + PING_KINDPTR_OFF]
+    mov [rsp + PING_KINDS_OFF + rax * 8], rcx
+    mov rcx, [rsp + PING_ATVAL_OFF]
+    mov [rsp + PING_ATS_OFF + rax * 8], rcx
+    inc dword [rsp + PING_COUNT_OFF]
+.ping_echo_next:
+    inc ebx
+    jmp .ping_echo_loop
+.ping_echo_fmt:
     lea rdi, [rel policy_buf]
     mov esi, POLICY_BUF_SIZE
-    call hg_grid_assemble_ping_echo wrt ..plt
-    jmp .ping_emit
+    mov rdx, r15
+    lea rcx, [rsp + PING_TEXTS_OFF]
+    lea r8, [rsp + PING_KINDS_OFF]
+    lea r9, [rsp + PING_ATS_OFF]
+    mov eax, [rsp + PING_COUNT_OFF]
+    mov [rsp + PING_CALL_SLOT], rax
+    call hg_fmt_grid_ping_echo wrt ..plt
 .ping_emit:
     cmp eax, 0
     jl .ping_done
@@ -649,6 +790,53 @@ hg_cmd_ping:
     lea rdx, [rel policy_buf]
     call queue_buf_h
 .ping_done:
-    add rsp, 1040
+    add rsp, PING_ECHO_FRAME
+    add rsp, 8
+    pop r15
     pop r14
+    ret
+
+hg_grid_load_session:
+    push rbx
+    push r12
+    push r13
+    mov r12, rdi
+    call hg_grid_remote wrt ..plt
+    test eax, eax
+    jz .ret0
+    test r12, r12
+    jz .ret0
+    cmp byte [r12 + SESSION_NAME], 0
+    je .ret0
+    sub rsp, LOAD_FRAME
+    lea rdi, [r12 + SESSION_NAME]
+    lea rsi, [rsp + LOAD_HUB_OFF]
+    call hg_grid_fetch_character wrt ..plt
+    cmp eax, 0
+    jl .retm1
+    cmp byte [rsp + LOAD_HUB_OFF + CHAR_RACE_OFF], 0
+    je .ret0f
+    lea rdi, [rsp]
+    call identity_load_local
+    lea rdi, [rsp]
+    lea rsi, [rsp + LOAD_HUB_OFF]
+    call identity_merge_hub
+    mov rdi, r12
+    lea rsi, [rsp]
+    call identity_apply_to_session
+    add rsp, LOAD_FRAME
+    mov eax, 1
+    jmp .out
+.retm1:
+    add rsp, LOAD_FRAME
+    mov eax, -1
+    jmp .out
+.ret0f:
+    add rsp, LOAD_FRAME
+.ret0:
+    xor eax, eax
+.out:
+    pop r13
+    pop r12
+    pop rbx
     ret

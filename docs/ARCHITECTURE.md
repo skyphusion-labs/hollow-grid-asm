@@ -75,13 +75,12 @@ service-loop iteration from `hg_lws_run`, rate-limits best-effort
 re-registration to roughly once every 10s and is a no-op in LocalHub mode.
 
 C owns RemoteHub HTTP/JSON/libcurl plus thin fetch/parse (`hg_grid_list_worlds`,
-`hg_grid_fetch_character`, `hg_grid_fetch_recent*`), login merge
-(`hg_grid_load_session`), listen row materialization (`hg_grid_listen_*_at`),
-ping collection (`hg_grid_assemble_ping_*`), and hub-backed prose/`@event`
-serialization in `format.c`. ASM owns LocalHub memory, command dispatch,
-identity merge for whoami/travel, worlds reachability tagging, and
-listen/ping branch selection (`asm/grid_policy.asm`). Asm never builds HTTP
-itself; C never decides LocalHub store policy or federation presentation rules.
+`hg_grid_fetch_character`, `hg_grid_fetch_recent*`, `hg_grid_local_trace_at`),
+and hub-backed prose/`@event` serialization in `format.c`. ASM owns LocalHub memory,
+command dispatch, identity merge for whoami/travel/login, worlds reachability
+tagging, listen/ping branch selection plus row collection, and federation
+presentation rules (`asm/grid_policy.asm`). Asm never builds HTTP itself; C never
+decides LocalHub store policy.
 
 `/health/deep` reports `grid_hub` as non-critical: LocalHub always reports
 `ok:true, latency_ms:0`; RemoteHub pings `tide()` and reports the measured
