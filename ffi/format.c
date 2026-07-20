@@ -339,6 +339,83 @@ int hg_fmt_who_local(char *buf, size_t cap, const void *session) {
   return snprintf(buf, cap, "Online: %s.\r\n", name);
 }
 
+int hg_fmt_char_identity(char *buf, size_t cap,
+                         const hg_char_identity_fields *fields) {
+  const char *name = fields != NULL ? fields->name : "";
+  long level = fields != NULL ? fields->level : 1;
+  long xp = fields != NULL ? fields->xp : 0;
+  long gold = fields != NULL ? fields->gold : 0;
+  const char *faction = fields != NULL ? fields->faction : "";
+  long morality = fields != NULL ? fields->morality : 0;
+  const char *title = fields != NULL ? fields->title : "";
+  const char *race = fields != NULL ? fields->race : "";
+  long ashsworn = fields != NULL ? fields->ashsworn : 0;
+  char nesc[40];
+  char fesc[24];
+  char tesc[64];
+  char resc[24];
+  const char *race_out = (race != NULL && race[0] != '\0') ? race : "human";
+  const char *fac_json =
+      (faction != NULL && faction[0] != '\0') ? faction : "none";
+  const char *fac_prose =
+      (faction != NULL && faction[0] != '\0') ? faction : "unaligned";
+  hg_json_escape(nesc, sizeof(nesc), name != NULL ? name : "");
+  hg_json_escape(fesc, sizeof(fesc), fac_json);
+  hg_json_escape(tesc, sizeof(tesc), title != NULL ? title : "");
+  hg_json_escape(resc, sizeof(resc), race_out);
+  return snprintf(
+      buf, cap,
+      "The Grid reads you back: %s, level %ld %s%s%s, %s standing, "
+      "morality %ld.\r\n"
+      "@event char.identity "
+      "{\"name\":\"%s\",\"level\":%ld,\"xp\":%ld,\"gold\":%ld,"
+      "\"faction\":\"%s\",\"morality\":%ld,\"title\":\"%s\","
+      "\"race\":\"%s\",\"ashsworn\":%s}\r\n",
+      name != NULL ? name : "", level, race_out,
+      (title != NULL && title[0] != '\0') ? " " : "",
+      (title != NULL && title[0] != '\0') ? title : "", fac_prose, morality,
+      nesc, level, xp, gold, fesc, morality, tesc, resc,
+      ashsworn ? "true" : "false");
+}
+
+int hg_fmt_grid_travel_unreachable(char *buf, size_t cap) {
+  return snprintf(buf, cap,
+                  "The Grid won't answer; travel is impossible right now.\r\n");
+}
+
+int hg_fmt_grid_travel_missing(char *buf, size_t cap, const char *target) {
+  return snprintf(buf, cap,
+                  "No world called \"%s\" answers on the Grid. (try 'worlds')\r\n",
+                  target != NULL ? target : "");
+}
+
+int hg_fmt_grid_travel_here(char *buf, size_t cap, const char *world) {
+  return snprintf(buf, cap, "You're already in %s.\r\n",
+                  world != NULL ? world : "");
+}
+
+int hg_fmt_grid_travel_handoff(char *buf, size_t cap, const char *id,
+                               const char *url) {
+  char idesc[64];
+  char udesc[176];
+  hg_json_escape(idesc, sizeof(idesc), id != NULL ? id : "");
+  hg_json_escape(udesc, sizeof(udesc), url != NULL ? url : "");
+  return snprintf(buf, cap,
+                  "The Grid routes you toward %s. Reconnect there and your "
+                  "canonical character follows:\r\n"
+                  "    %s\r\n"
+                  "@event grid.travel {\"to\":\"%s\",\"url\":\"%s\"}\r\n",
+                  id != NULL ? id : "", url != NULL ? url : "", idesc, udesc);
+}
+
+void hg_whoami_reply(void *session, void *wsi,
+                     const hg_char_identity_fields *fields) {
+  if (hg_fmt_char_identity(g_scratch, sizeof(g_scratch), fields) > 0) {
+    hg_session_queue(session, wsi, g_scratch,
+                     (size_t)strlen(g_scratch));
+  }
+}
+
 int hg_fmt_ability_recharging(char *buf, size_t cap, const char *name,
                               int seconds) {
   return snprintf(buf, cap, "%s is still recharging. (%ds)\r\n",

@@ -30,6 +30,29 @@ int hg_fmt_room_actions(char *buf, size_t cap, const char *actions_json);
 int hg_fmt_attack_miss(char *buf, size_t cap, const char *target,
                        const char *suggestions);
 int hg_fmt_who_local(char *buf, size_t cap, const void *session);
+typedef struct {
+  const char *name;
+  long level;
+  long xp;
+  long gold;
+  const char *faction;
+  long morality;
+  const char *title;
+  const char *race;
+  long ashsworn;
+} hg_char_identity_fields;
+
+int hg_fmt_char_identity(char *buf, size_t cap,
+                         const hg_char_identity_fields *fields);
+int hg_fmt_grid_travel_unreachable(char *buf, size_t cap);
+int hg_fmt_grid_travel_missing(char *buf, size_t cap, const char *target);
+int hg_fmt_grid_travel_here(char *buf, size_t cap, const char *world);
+int hg_fmt_grid_travel_handoff(char *buf, size_t cap, const char *id,
+                               const char *url);
+
+void hg_whoami_reply(void *session, void *wsi,
+                     const hg_char_identity_fields *fields);
+
 int hg_fmt_ability_recharging(char *buf, size_t cap, const char *name,
                               int seconds);
 int hg_fmt_char_died(char *buf, size_t cap, const char *room, int64_t hp,

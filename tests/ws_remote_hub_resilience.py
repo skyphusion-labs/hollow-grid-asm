@@ -16,6 +16,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -71,8 +72,12 @@ def read_until(ws, needle: str, limit: int = 120) -> str:
     raise RuntimeError(f"did not receive {needle!r}: {transcript[-400:]!r}")
 
 
-def wait_health(port: int) -> str:
+def wait_health(port: int, server: subprocess.Popen | None = None) -> str:
     for _ in range(80):
+        if server is not None and server.poll() is not None:
+            raise RuntimeError(
+                f"resilience server exited during boot (code {server.returncode})"
+            )
         try:
             with urllib.request.urlopen(
                 f"http://127.0.0.1:{port}/health", timeout=0.3
@@ -81,6 +86,7 @@ def wait_health(port: int) -> str:
                     return response.read().decode()
         except OSError:
             pass
+        time.sleep(0.1)
     raise RuntimeError("resilience server did not become healthy")
 
 
@@ -148,23 +154,23 @@ def main() -> None:
             stderr=subprocess.DEVNULL,
         )
         try:
-            wait_health(mud_port)
+            wait_health(mud_port, server)
 
             MODE["v"] = "malformed"
             exercise(mud_port, "MalformHero")
             if server.poll() is not None:
                 raise RuntimeError("server exited under malformed hub JSON")
-            wait_health(mud_port)
+            wait_health(mud_port, server)
 
             MODE["v"] = "http_error"
             exercise(mud_port, "ErrorHero")
-            wait_health(mud_port)
+            wait_health(mud_port, server)
 
             MODE["v"] = "drop"
             exercise(mud_port, "DropHero")
             if server.poll() is not None:
                 raise RuntimeError("server exited when the hub dropped connections")
-            body = wait_health(mud_port)
+            body = wait_health(mud_port, server)
             if '"ok":true' not in body:
                 raise RuntimeError(f"health not ok after hostile hub: {body}")
         finally:

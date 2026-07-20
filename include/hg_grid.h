@@ -78,17 +78,43 @@ typedef struct {
   long ashsworn;
 } hg_grid_identity_ctx;
 
+#define HG_GRID_MAX_WORLDS 8
+
+typedef struct {
+  char id[48];
+  char url[160];
+  long long last_seen;
+} hg_grid_world_row;
+
+/* Parsed loadCharacter payload. present is set when the RPC returned an object;
+ * asm decides whether that counts as a canonical overlay (identity merge). */
+typedef struct {
+  long level;
+  long xp;
+  long gold;
+  char faction[16];
+  long morality;
+  char title[48];
+  char race[16];
+  long ashsworn;
+  int present;
+} hg_grid_character_row;
+
+/* Fetch-only hub accessors (no merge/match/prose policy). */
+int hg_grid_list_worlds(hg_grid_world_row *out, size_t cap, size_t *out_count);
+/* RemoteHub: 0 on transport ok (present reflects payload), -1 on failure.
+ * LocalHub: always 0 with present=0. */
+int hg_grid_fetch_character(const char *name, hg_grid_character_row *out);
+
 /* Format helpers: each writes CRLF-terminated prose plus one or more
  * "@event <name> {json}\r\n" lines into buf and returns the byte length, or
  * -1 if cap was too small. Callers queue the bytes directly (no extra
- * strlen needed on success). */
+ * strlen needed on success). Worlds/listen/ping prose still lives here;
+ * whoami/travel policy + surfaces live in asm/grid_policy.asm. */
 int hg_grid_fmt_listen(char *buf, size_t cap);
 int hg_grid_fmt_ping_echo(char *buf, size_t cap, const char *room_id);
 int hg_grid_fmt_ping_all(char *buf, size_t cap);
 int hg_grid_fmt_worlds(char *buf, size_t cap);
-int hg_grid_fmt_travel(char *buf, size_t cap, const char *target,
-                       int *out_handoff);
-int hg_grid_fmt_whoami(char *buf, size_t cap, const hg_grid_identity_ctx *ctx);
 
 /* Remaining RPC surface (docs/PLAN.md Phase 3): supported by this client so a
  * later phase can wire more player/keeper commands. Not all of these have an

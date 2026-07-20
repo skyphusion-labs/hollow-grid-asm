@@ -21,6 +21,7 @@ ASM_SRC := \
 	asm/social_grid.asm \
 	asm/actions.asm \
 	asm/grid_local.asm \
+	asm/grid_policy.asm \
 	asm/content.asm \
 	asm/event.asm \
 	asm/rooms.asm \

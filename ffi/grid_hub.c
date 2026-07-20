@@ -6,7 +6,6 @@
 #include "hg_session.h"
 
 #include <cjson/cJSON.h>
-#include <ctype.h>
 #include <curl/curl.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -121,21 +120,6 @@ static void json_escape(char *out, size_t cap, const char *in) {
   }
   out[w] = '\0';
 }
-
-static int ci_equal(const char *a, const char *b) {
-  if (a == NULL || b == NULL) {
-    return a == b;
-  }
-  while (*a != '\0' && *b != '\0') {
-    if (tolower((unsigned char)*a) != tolower((unsigned char)*b)) {
-      return 0;
-    }
-    ++a;
-    ++b;
-  }
-  return *a == '\0' && *b == '\0';
-}
-
 
 /* ---------- RemoteHub transport ---------- */
 
@@ -468,23 +452,28 @@ void hg_grid_federation_tick(long long now) {
 
 /* ---------- listWorlds (shared local/remote lookup) ---------- */
 
-#define HG_MAX_WORLDS 8
-typedef struct {
-  char id[48];
-  char url[160];
-  long long last_seen;
-} hg_world_row;
-
-static int list_worlds(hg_world_row *out, int cap) {
+int hg_grid_list_worlds(hg_grid_world_row *out, size_t cap, size_t *out_count) {
+  if (out_count != NULL) {
+    *out_count = 0;
+  }
+  if (out == NULL || cap == 0) {
+    return -1;
+  }
+  int icap = (int)(cap > (size_t)HG_GRID_MAX_WORLDS ? HG_GRID_MAX_WORLDS
+                                                    : cap);
   if (!g.remote) {
     char ids[8][48];
     char urls[8][160];
     long long seen[8];
-    int n = hg_grid_local_list_worlds(&ids[0][0], &urls[0][0], seen, cap < 8 ? cap : 8);
+    int n = hg_grid_local_list_worlds(&ids[0][0], &urls[0][0], seen,
+                                      icap < 8 ? icap : 8);
     for (int i = 0; i < n; ++i) {
       safe_copy(out[i].id, sizeof(out[i].id), ids[i]);
       safe_copy(out[i].url, sizeof(out[i].url), urls[i]);
       out[i].last_seen = seen[i];
+    }
+    if (out_count != NULL) {
+      *out_count = (size_t)n;
     }
     return n;
   }
@@ -499,7 +488,7 @@ static int list_worlds(hg_world_row *out, int cap) {
   int n = 0;
   const cJSON *row = NULL;
   cJSON_ArrayForEach(row, result) {
-    if (n >= cap) {
+    if (n >= icap) {
       break;
     }
     safe_copy(out[n].id, sizeof(out[n].id), json_str(row, "id"));
@@ -508,7 +497,44 @@ static int list_worlds(hg_world_row *out, int cap) {
     n++;
   }
   cJSON_Delete(result);
+  if (out_count != NULL) {
+    *out_count = (size_t)n;
+  }
   return n;
+}
+
+int hg_grid_fetch_character(const char *name, hg_grid_character_row *out) {
+  if (out == NULL) {
+    return -1;
+  }
+  memset(out, 0, sizeof(*out));
+  if (!g.remote) {
+    return 0;
+  }
+  cJSON *result = NULL;
+  cJSON *params = cJSON_CreateArray();
+  cJSON_AddItemToArray(params,
+                       cJSON_CreateString(name != NULL ? name : ""));
+  if (rpc_call("loadCharacter", params, &result) != 0) {
+    cJSON_Delete(result);
+    return -1;
+  }
+  if (!cJSON_IsObject(result)) {
+    cJSON_Delete(result);
+    return -1;
+  }
+  out->present = 1;
+  out->level = json_num(result, "level", 1);
+  out->xp = json_num(result, "xp", 0);
+  out->gold = json_num(result, "gold", 20);
+  out->morality = json_num(result, "morality", 0);
+  safe_copy(out->faction, sizeof(out->faction), json_str(result, "faction"));
+  safe_copy(out->title, sizeof(out->title), json_str(result, "title"));
+  safe_copy(out->race, sizeof(out->race), json_str(result, "race"));
+  const cJSON *ash = cJSON_GetObjectItemCaseSensitive(result, "ashsworn");
+  out->ashsworn = cJSON_IsTrue(ash) ? 1 : 0;
+  cJSON_Delete(result);
+  return 0;
 }
 
 /* ---------- fmt: worlds / travel ---------- */
@@ -529,8 +555,8 @@ static int append(char *buf, size_t cap, size_t *off, const char *fmt, ...) {
 }
 
 int hg_grid_fmt_worlds(char *buf, size_t cap) {
-  hg_world_row rows[HG_MAX_WORLDS];
-  int n = list_worlds(rows, HG_MAX_WORLDS);
+  hg_grid_world_row rows[HG_GRID_MAX_WORLDS];
+  int n = hg_grid_list_worlds(rows, HG_GRID_MAX_WORLDS, NULL);
   size_t off = 0;
   if (n < 0) {
     if (append(buf, cap, &off,
@@ -582,87 +608,6 @@ int hg_grid_fmt_worlds(char *buf, size_t cap) {
   if (append(buf, cap, &off, "@event grid.worlds {\"worlds\":%s}\r\n",
             json) != 0) {
     return -1;
-  }
-  return (int)off;
-}
-
-int hg_grid_fmt_travel(char *buf, size_t cap, const char *target,
-                       int *out_handoff) {
-  if (out_handoff != NULL) {
-    *out_handoff = 0;
-  }
-  if (target == NULL || target[0] == '\0') {
-    return hg_grid_fmt_worlds(buf, cap);
-  }
-  hg_world_row rows[HG_MAX_WORLDS];
-  int n = list_worlds(rows, HG_MAX_WORLDS);
-  size_t off = 0;
-  if (n < 0) {
-    if (append(buf, cap, &off,
-              "The Grid won't answer; travel is impossible right now.\r\n") !=
-        0) {
-      return -1;
-    }
-    return (int)off;
-  }
-  int match = -1;
-  for (int i = 0; i < n; ++i) {
-    if (ci_equal(rows[i].id, target)) {
-      match = i;
-      break;
-    }
-  }
-  if (match < 0) {
-    for (int i = 0; i < n; ++i) {
-      /* substring, case-insensitive, small n so a naive scan is fine */
-      char hay[64];
-      char needle[64];
-      safe_copy(hay, sizeof(hay), rows[i].id);
-      safe_copy(needle, sizeof(needle), target);
-      for (char *p = hay; *p != '\0'; ++p) {
-        *p = (char)tolower((unsigned char)*p);
-      }
-      for (char *p = needle; *p != '\0'; ++p) {
-        *p = (char)tolower((unsigned char)*p);
-      }
-      if (strstr(hay, needle) != NULL) {
-        match = i;
-        break;
-      }
-    }
-  }
-  if (match < 0) {
-    if (append(buf, cap, &off,
-              "No world called \"%s\" answers on the Grid. (try 'worlds')\r\n",
-              target) != 0) {
-      return -1;
-    }
-    return (int)off;
-  }
-  if (strcmp(rows[match].id, g.world_name) == 0) {
-    if (append(buf, cap, &off, "You're already in %s.\r\n", g.world_name) !=
-        0) {
-      return -1;
-    }
-    return (int)off;
-  }
-  if (append(buf, cap, &off,
-            "The Grid routes you toward %s. Reconnect there and your canonical "
-            "character follows:\r\n"
-            "    %s\r\n",
-            rows[match].id, rows[match].url) != 0) {
-    return -1;
-  }
-  char idesc[64];
-  char udesc[176];
-  json_escape(idesc, sizeof(idesc), rows[match].id);
-  json_escape(udesc, sizeof(udesc), rows[match].url);
-  if (append(buf, cap, &off, "@event grid.travel {\"to\":\"%s\",\"url\":\"%s\"}\r\n",
-            idesc, udesc) != 0) {
-    return -1;
-  }
-  if (out_handoff != NULL) {
-    *out_handoff = 1;
   }
   return (int)off;
 }
@@ -937,92 +882,6 @@ int hg_grid_fmt_ping_all(char *buf, size_t cap) {
   }
   if (append(buf, cap, &off, "@event grid.federation {\"traces\":%s}\r\n",
             json) != 0) {
-    return -1;
-  }
-  return (int)off;
-}
-
-/* ---------- fmt: whoami ---------- */
-
-int hg_grid_fmt_whoami(char *buf, size_t cap, const hg_grid_identity_ctx *ctx) {
-  size_t off = 0;
-  long level = ctx->level;
-  long xp = ctx->xp;
-  long gold = ctx->gold;
-  long morality = ctx->morality;
-  long ashsworn = ctx->ashsworn;
-  char faction[16];
-  char title[48];
-  char race[16];
-  safe_copy(faction, sizeof(faction), ctx->faction);
-  safe_copy(title, sizeof(title), ctx->title);
-  safe_copy(race, sizeof(race), ctx->race);
-
-  if (g.remote) {
-    cJSON *result = NULL;
-    cJSON *params = cJSON_CreateArray();
-    cJSON_AddItemToArray(params,
-                        cJSON_CreateString(ctx->name != NULL ? ctx->name : ""));
-    if (rpc_call("loadCharacter", params, &result) == 0 &&
-        cJSON_IsObject(result)) {
-      long hub_level = json_num(result, "level", 1);
-      long hub_xp = json_num(result, "xp", 0);
-      const char *hub_race = json_str(result, "race");
-      const char *hub_faction = json_str(result, "faction");
-      long hub_morality = json_num(result, "morality", 0);
-      int found = hub_race[0] != '\0' || hub_level > 1 || hub_xp > 0 ||
-                  hub_faction[0] != '\0' || hub_morality != 0;
-      if (found) {
-        level = hub_level;
-        xp = hub_xp;
-        gold = json_num(result, "gold", gold);
-        morality = hub_morality;
-        safe_copy(race, sizeof(race), hub_race);
-        /* Session-local standing wins over a stale hub read. */
-        if (!(strcmp(faction, "ally") == 0 || strcmp(faction, "front") == 0)) {
-          safe_copy(faction, sizeof(faction), hub_faction);
-        }
-        const char *hub_title = json_str(result, "title");
-        if (title[0] == '\0') {
-          safe_copy(title, sizeof(title), hub_title);
-        }
-        const cJSON *ash = cJSON_GetObjectItemCaseSensitive(result, "ashsworn");
-        ashsworn = cJSON_IsTrue(ash) ? 1 : 0;
-      }
-    } else {
-      if (append(buf, cap, &off,
-                "(the Grid is unreachable; showing your local self)\r\n") !=
-          0) {
-        return -1;
-      }
-    }
-    cJSON_Delete(result);
-  }
-
-  char nesc[40];
-  char fesc[24];
-  char tesc[64];
-  char resc[24];
-  json_escape(nesc, sizeof(nesc), ctx->name);
-  json_escape(fesc, sizeof(fesc), faction[0] != '\0' ? faction : "none");
-  json_escape(tesc, sizeof(tesc), title);
-  json_escape(resc, sizeof(resc), race[0] != '\0' ? race : "human");
-
-  if (append(buf, cap, &off,
-            "The Grid reads you back: %s, level %ld %s%s%s, %s standing, "
-            "morality %ld.\r\n",
-            ctx->name != NULL ? ctx->name : "", level,
-            race[0] != '\0' ? race : "human", title[0] != '\0' ? " " : "",
-            title, faction[0] != '\0' ? faction : "unaligned", morality) !=
-      0) {
-    return -1;
-  }
-  if (append(buf, cap, &off,
-            "@event char.identity {\"name\":\"%s\",\"level\":%ld,\"xp\":%ld,"
-            "\"gold\":%ld,\"faction\":\"%s\",\"morality\":%ld,\"title\":\"%s\","
-            "\"race\":\"%s\",\"ashsworn\":%s}\r\n",
-            nesc, level, xp, gold, fesc, morality, tesc, resc,
-            ashsworn ? "true" : "false") != 0) {
     return -1;
   }
   return (int)off;
