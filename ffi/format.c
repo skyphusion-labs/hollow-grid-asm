@@ -7,6 +7,7 @@
 
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdarg.h>
 #include <string.h>
 #include <strings.h>
 #include <time.h>
@@ -406,6 +407,231 @@ int hg_fmt_grid_travel_handoff(char *buf, size_t cap, const char *id,
                   "    %s\r\n"
                   "@event grid.travel {\"to\":\"%s\",\"url\":\"%s\"}\r\n",
                   id != NULL ? id : "", url != NULL ? url : "", idesc, udesc);
+}
+
+static int fmt_append(char *buf, size_t cap, size_t *off, const char *fmt, ...) {
+  if (*off >= cap) {
+    return -1;
+  }
+  va_list ap;
+  va_start(ap, fmt);
+  int n = vsnprintf(buf + *off, cap - *off, fmt, ap);
+  va_end(ap);
+  if (n < 0 || (size_t)n >= cap - *off) {
+    return -1;
+  }
+  *off += (size_t)n;
+  return 0;
+}
+
+int hg_fmt_grid_worlds_unreachable(char *buf, size_t cap) {
+  return snprintf(buf, cap,
+                    "The Grid is silent; the registry is out of reach.\r\n");
+}
+
+int hg_fmt_grid_worlds(char *buf, size_t cap, const hg_grid_world_row *rows,
+                       const int *reachable, const int *active, const int *here,
+                       int count) {
+  size_t off = 0;
+  if (fmt_append(buf, cap, &off,
+             "Worlds linked on the Grid (say 'travel <world>'):\r\n") != 0) {
+    return -1;
+  }
+  char json[1024];
+  size_t joff = 0;
+  json[0] = '\0';
+  if (fmt_append(json, sizeof(json), &joff, "[") != 0) {
+    return -1;
+  }
+  for (int i = 0; i < count; ++i) {
+    const char *tag = "seeded (not yet live)";
+    if (here != NULL && here[i]) {
+      tag = "you are here";
+    } else if (reachable != NULL && active != NULL && reachable[i] && active[i]) {
+      tag = "reachable, active now";
+    } else if (reachable != NULL && reachable[i]) {
+      tag = "reachable, quiet";
+    }
+    if (fmt_append(buf, cap, &off, "  %s  [%s]\r\n", rows[i].id, tag) != 0) {
+      return -1;
+    }
+    char idesc[64];
+    hg_json_escape(idesc, sizeof(idesc), rows[i].id);
+    if (fmt_append(json, sizeof(json), &joff,
+                   "%s{\"id\":\"%s\",\"reachable\":%s,\"active\":%s,"
+                   "\"lastSeen\":%lld,\"here\":%s}",
+                   i == 0 ? "" : ",", idesc,
+                   reachable != NULL && reachable[i] ? "true" : "false",
+                   active != NULL && active[i] ? "true" : "false",
+                   rows[i].last_seen, here != NULL && here[i] ? "true" : "false") !=
+        0) {
+      return -1;
+    }
+  }
+  if (fmt_append(json, sizeof(json), &joff, "]") != 0) {
+    return -1;
+  }
+  if (fmt_append(buf, cap, &off, "@event grid.worlds {\"worlds\":%s}\r\n",
+                 json) != 0) {
+    return -1;
+  }
+  return (int)off;
+}
+
+int hg_fmt_grid_listen_echo(char *buf, size_t cap, const char *text) {
+  char esc[220];
+  hg_json_escape(esc, sizeof(esc), text != NULL ? text : "");
+  return snprintf(buf, cap,
+                  "You go still and tune the dead frequencies. The static "
+                  "thins, and the network plays something back -- a memory it "
+                  "never let go of:\r\n  >> %s <<\r\n"
+                  "@event grid.transmission {\"kind\":\"echo\",\"text\":\"%s\"}\r\n",
+                  text != NULL ? text : "", esc);
+}
+
+int hg_fmt_grid_listen_trace(char *buf, size_t cap, const char *text,
+                             const char *world, const char *self_world) {
+  char esc[220];
+  size_t off = 0;
+  hg_json_escape(esc, sizeof(esc), text != NULL ? text : "");
+  if (fmt_append(buf, cap, &off,
+                 "You go still and tune the dead frequencies. The static "
+                 "thins, and the network plays something back -- a memory it "
+                 "never let go of:\r\n  >> %s <<\r\n",
+                 text != NULL ? text : "") != 0) {
+    return -1;
+  }
+  if (world != NULL && self_world != NULL && world[0] != '\0' &&
+      strcmp(world, self_world) != 0) {
+    if (fmt_append(buf, cap, &off,
+                   "  (...the signal carries from somewhere called %s)\r\n",
+                   world) != 0) {
+      return -1;
+    }
+  }
+  if (fmt_append(buf, cap, &off,
+                 "@event grid.transmission {\"kind\":\"echo\",\"text\":\"%s\"}\r\n",
+                 esc) != 0) {
+    return -1;
+  }
+  return (int)off;
+}
+
+int hg_fmt_grid_listen_empty(char *buf, size_t cap) {
+  return snprintf(buf, cap,
+                  "You go still and tune the dead frequencies. Only static "
+                  "answers; the deep memory here is empty.\r\n"
+                  "@event grid.transmission {\"kind\":\"empty\",\"text\":\"\"}\r\n");
+}
+
+int hg_fmt_grid_ping_echo(char *buf, size_t cap, const char *room_id,
+                          const char *const *texts,
+                          const char *const *kinds, const long long *ats,
+                          int count) {
+  size_t off = 0;
+  char json[1536];
+  size_t joff = 0;
+  json[0] = '\0';
+  if (fmt_append(json, sizeof(json), &joff, "[") != 0) {
+    return -1;
+  }
+  if (count <= 0) {
+    if (fmt_append(buf, cap, &off,
+                   "You key into the dead Grid. Static, a cold hum... but this "
+                   "node remembers nothing. Not yet. (try 'ping all')\r\n") != 0) {
+      return -1;
+    }
+  } else {
+    if (fmt_append(buf, cap, &off,
+                   "You key into the dead Grid. Static, then it remembers:\r\n") !=
+        0) {
+      return -1;
+    }
+    for (int i = 0; i < count; ++i) {
+      if (fmt_append(buf, cap, &off, "  - %s\r\n",
+                     texts != NULL && texts[i] != NULL ? texts[i] : "") != 0) {
+        return -1;
+      }
+      char esc[220];
+      char kesc[32];
+      hg_json_escape(esc, sizeof(esc), texts != NULL && texts[i] != NULL
+                                              ? texts[i]
+                                              : "");
+      hg_json_escape(kesc, sizeof(kesc),
+                     kinds != NULL && kinds[i] != NULL ? kinds[i] : "");
+      if (fmt_append(json, sizeof(json), &joff,
+                     "%s{\"kind\":\"%s\",\"text\":\"%s\",\"at\":%lld}",
+                     i == 0 ? "" : ",", kesc, esc,
+                     ats != NULL ? ats[i] : 0LL) != 0) {
+        return -1;
+      }
+    }
+    if (fmt_append(buf, cap, &off,
+                   "  (say 'ping all' to hear the whole network)\r\n") != 0) {
+      return -1;
+    }
+  }
+  if (fmt_append(json, sizeof(json), &joff, "]") != 0) {
+    return -1;
+  }
+  char resc[80];
+  hg_json_escape(resc, sizeof(resc), room_id != NULL ? room_id : "");
+  if (fmt_append(buf, cap, &off, "@event grid.echo {\"node\":\"%s\",\"traces\":%s}\r\n",
+                 resc, json) != 0) {
+    return -1;
+  }
+  return (int)off;
+}
+
+int hg_fmt_grid_ping_all(char *buf, size_t cap,
+                         const hg_grid_federation_trace *traces, int count) {
+  size_t off = 0;
+  if (count <= 0) {
+    return snprintf(buf, cap,
+                    "The deep Grid hums, vast and empty. Nothing echoes back from "
+                    "the other nodes -- yet.\r\n"
+                    "@event grid.federation {\"traces\":[]}\r\n");
+  }
+  if (fmt_append(buf, cap, &off,
+                 "You key past your own node, into the whole dead network. It "
+                 "remembers, from across the Grid:\r\n") != 0) {
+    return -1;
+  }
+  char json[2048];
+  size_t joff = 0;
+  json[0] = '\0';
+  if (fmt_append(json, sizeof(json), &joff, "[") != 0) {
+    return -1;
+  }
+  for (int i = 0; i < count; ++i) {
+    if (fmt_append(buf, cap, &off, "  - [%s] %s\r\n", traces[i].world,
+                   traces[i].text) != 0) {
+      return -1;
+    }
+    char wesc[64];
+    char nesc[80];
+    char kesc[32];
+    char tesc[220];
+    hg_json_escape(wesc, sizeof(wesc), traces[i].world);
+    hg_json_escape(nesc, sizeof(nesc), traces[i].node);
+    hg_json_escape(kesc, sizeof(kesc), traces[i].kind);
+    hg_json_escape(tesc, sizeof(tesc), traces[i].text);
+    if (fmt_append(json, sizeof(json), &joff,
+                   "%s{\"world\":\"%s\",\"node\":\"%s\",\"kind\":\"%s\","
+                   "\"text\":\"%s\",\"at\":%lld}",
+                   i == 0 ? "" : ",", wesc, nesc, kesc, tesc, traces[i].at) !=
+        0) {
+      return -1;
+    }
+  }
+  if (fmt_append(json, sizeof(json), &joff, "]") != 0) {
+    return -1;
+  }
+  if (fmt_append(buf, cap, &off, "@event grid.federation {\"traces\":%s}\r\n",
+                 json) != 0) {
+    return -1;
+  }
+  return (int)off;
 }
 
 void hg_whoami_reply(void *session, void *wsi,

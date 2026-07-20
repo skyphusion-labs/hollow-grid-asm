@@ -185,6 +185,15 @@ Two Fable-5 reviews (correctness + honest ASM ownership) knocked out on
   `hg_grid_list_worlds`, `hg_grid_fetch_character`. C format-only:
   `hg_fmt_char_identity`, `hg_fmt_grid_travel_*`, `hg_whoami_reply`. Travel
   world rows and format buffers sit in `.bss` (LWS thread stack is tight).
+- **B9 worlds/session/listen/ping policy (`asm/grid_policy.asm`,
+  `ffi/format.c`, `ffi/grid_hub.c`):** worlds reachability/active/here tagging
+  and listen source selection (local echo vs remote `recent` vs local trace) live
+  in asm. Login-time `hg_grid_load_session` merge (ally/front wins, local title
+  wins; resume only when hub race is set) lives in C with the same merge rules as
+  whoami. C fetch-only: `hg_grid_fetch_recent*`, `hg_grid_fetch_character`,
+  `hg_grid_local_trace_at`. C format-only: `hg_fmt_grid_worlds*`,
+  `hg_fmt_grid_listen_*`, `hg_fmt_grid_ping_*`. C row materialization:
+  `hg_grid_listen_*_at`, `hg_grid_assemble_ping_*` (asm dispatches branches).
 - **B9 world id + thresholds:** `@event` world claims (`grid.who`,
   `comm.gridcast`) thread `hg_grid_world_name()` (configured world id) instead of
   a hardcoded literal; `hg_regard_of` documents the intentional precedence
@@ -198,13 +207,20 @@ Two Fable-5 reviews (correctness + honest ASM ownership) knocked out on
   mid-suite; asserts `/health` stays 200, the process never exits, and `whoami`
   fails open to the local self.
 
-**Deferred (C policy, follow-up):** `hg_grid_fmt_worlds` reachability/active/here
-tagging still in C (needs asm re-author like B8). `hg_grid_load_session` login
-apply differs from whoami merge (no ally/front precedence); intentional until a
-single asm identity module owns both paths. `hg_grid_fmt_listen` / `ping_*` hub
-prose wrappers remain in C.
+**Deferred (C policy, follow-up):** `ping` / `ping all` echo collection still uses
+`hg_grid_assemble_ping_echo` / `hg_grid_assemble_ping_all` in C (asm dispatches
+those branches). Listen row fetch + format uses `hg_grid_listen_*_at` in C (asm
+keeps branch/index selection). `hg_grid_load_session` merge lives in C (same
+rules as asm whoami; hub resume gated on non-empty race like pre-B9). Re-author
+those paths into asm when multi-out-pointer and 16-byte stack discipline are
+stable.
 
 **Verify (rancid, podman, ubuntu:24.04, linux/amd64, 2026-07-20):**
+`make check` **green** on branch `feat/b9-grid-worlds-session-policy-asm`:
+foundation (persistence, hardening, gameplay, federation),
+`ws_remote_federation`, `ws_localhub_soak`, `ws_remote_hub_resilience`.
+
+**Verify (rancid, podman, ubuntu:24.04, linux/amd64, 2026-07-20, B8):**
 `make check` **green** on branch `feat/b8-identity-travel-policy-asm`:
 foundation (persistence, hardening, gameplay, federation),
 `ws_remote_federation`, `ws_localhub_soak`, `ws_remote_hub_resilience`.

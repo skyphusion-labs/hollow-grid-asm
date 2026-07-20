@@ -106,15 +106,28 @@ int hg_grid_list_worlds(hg_grid_world_row *out, size_t cap, size_t *out_count);
  * LocalHub: always 0 with present=0. */
 int hg_grid_fetch_character(const char *name, hg_grid_character_row *out);
 
-/* Format helpers: each writes CRLF-terminated prose plus one or more
- * "@event <name> {json}\r\n" lines into buf and returns the byte length, or
- * -1 if cap was too small. Callers queue the bytes directly (no extra
- * strlen needed on success). Worlds/listen/ping prose still lives here;
- * whoami/travel policy + surfaces live in asm/grid_policy.asm. */
-int hg_grid_fmt_listen(char *buf, size_t cap);
-int hg_grid_fmt_ping_echo(char *buf, size_t cap, const char *room_id);
-int hg_grid_fmt_ping_all(char *buf, size_t cap);
-int hg_grid_fmt_worlds(char *buf, size_t cap);
+typedef struct {
+  char world[48];
+  char node[64];
+  char kind[24];
+  char text[200];
+  long long at;
+} hg_grid_federation_trace;
+
+/* Fetch-only helpers for listen/ping policy in asm/grid_policy.asm. */
+int hg_grid_fetch_recent(int limit, hg_grid_federation_trace *out, size_t cap,
+                         size_t *out_count);
+int hg_grid_fetch_recent_across(int limit, hg_grid_federation_trace *out,
+                                size_t cap, size_t *out_count);
+int hg_grid_local_trace_at(int index, hg_grid_federation_trace *out);
+/* Collect + format ping all (collection policy in grid_hub.c). */
+int hg_grid_assemble_ping_all(char *buf, size_t cap);
+int hg_grid_assemble_ping_echo(char *buf, size_t cap, const char *room_id);
+/* Listen: asm picks branch + index; C materializes row and formats. */
+int hg_grid_listen_echo_at(char *buf, size_t cap, int index);
+int hg_grid_listen_local_trace_at(char *buf, size_t cap, int index);
+int hg_grid_listen_remote_recent_count(void);
+int hg_grid_listen_remote_recent_at(char *buf, size_t cap, int index);
 
 /* Remaining RPC surface (docs/PLAN.md Phase 3): supported by this client so a
  * later phase can wire more player/keeper commands. Not all of these have an
@@ -124,10 +137,9 @@ int hg_grid_shift_tide(int delta, int *out_tide);
 int hg_grid_gridcast(const char *sender, const char *text);
 int hg_grid_commit_character(const char *name,
                              const hg_grid_identity_ctx *ctx);
-/* Load or commit the canonical identity fields carried by an ASM session.
- * load returns 1 when a canonical race exists, 0 for a new/standalone
- * character, and -1 when the remote hub is unavailable. */
+/* Load canonical identity into an ASM session (merge rules in grid_hub.c). */
 int hg_grid_load_session(void *session);
+/* Commit the canonical identity fields carried by an ASM session. */
 int hg_grid_commit_session(void *session);
 
 typedef struct {

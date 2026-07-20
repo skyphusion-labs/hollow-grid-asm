@@ -1,6 +1,8 @@
 #ifndef HG_FORMAT_H
 #define HG_FORMAT_H
 
+#include "hg_grid.h"
+
 #include <stddef.h>
 #include <stdint.h>
 
@@ -49,6 +51,22 @@ int hg_fmt_grid_travel_missing(char *buf, size_t cap, const char *target);
 int hg_fmt_grid_travel_here(char *buf, size_t cap, const char *world);
 int hg_fmt_grid_travel_handoff(char *buf, size_t cap, const char *id,
                                const char *url);
+
+int hg_fmt_grid_worlds_unreachable(char *buf, size_t cap);
+int hg_fmt_grid_worlds(char *buf, size_t cap,
+                       const hg_grid_world_row *rows,
+                       const int *reachable, const int *active,
+                       const int *here, int count);
+int hg_fmt_grid_listen_echo(char *buf, size_t cap, const char *text);
+int hg_fmt_grid_listen_trace(char *buf, size_t cap, const char *text,
+                             const char *world, const char *self_world);
+int hg_fmt_grid_listen_empty(char *buf, size_t cap);
+int hg_fmt_grid_ping_echo(char *buf, size_t cap, const char *room_id,
+                          const char *const *texts,
+                          const char *const *kinds,
+                          const long long *ats, int count);
+int hg_fmt_grid_ping_all(char *buf, size_t cap,
+                         const hg_grid_federation_trace *traces, int count);
 
 void hg_whoami_reply(void *session, void *wsi,
                      const hg_char_identity_fields *fields);
