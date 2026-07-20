@@ -1205,9 +1205,10 @@ tell_impl:
     jnz .send
     mov rdi, r15
     call strlen wrt ..plt
-    mov r8, rax
+    ; Spill prefix-len/found/current to the frame; PLT calls clobber r8/r10/r11.
+    mov [rsp + 1000], rax             ; prefix length
+    mov qword [rsp + 1008], 0         ; found session (null)
     xor ebx, ebx
-    xor r10, r10
 .search:
     cmp ebx, HG_MAX_SESSIONS
     jge .check_amb
@@ -1215,23 +1216,24 @@ tell_impl:
     call hg_session_at wrt ..plt
     test rax, rax
     jz .next_s
-    mov r11, rax
-    lea rdi, [r11 + SESSION_NAME]
+    mov [rsp + 1016], rax             ; current session
+    lea rdi, [rax + SESSION_NAME]
     mov rsi, r15
-    mov rdx, r8
+    mov rdx, [rsp + 1000]
     call strncasecmp wrt ..plt
     test eax, eax
     jnz .next_s
-    test r10, r10
-    jnz .no_one
-    mov r10, r11
+    cmp qword [rsp + 1008], 0
+    jne .no_one
+    mov rax, [rsp + 1016]
+    mov [rsp + 1008], rax
 .next_s:
     inc ebx
     jmp .search
 .check_amb:
-    test r10, r10
+    mov rax, [rsp + 1008]
+    test rax, rax
     jz .no_one
-    mov rax, r10
 .send:
     mov rbx, rax
     lea rdi, [rbx + SESSION_REPLY_TO]
@@ -1286,7 +1288,6 @@ tell_impl:
     lea rsi, [rsp + 880]
     call queue_line_h
 .tell_out:
-    add rsp, 1040
     jmp .out
 .need:
     mov rdi, r12
@@ -1298,6 +1299,8 @@ tell_impl:
     lea rsi, [rel tell_no_one]
     call queue_line_h
 .out:
+    ; Single frame teardown for every path (was leaked on need/no_one).
+    add rsp, 1040
     pop rbx
     pop r15
     pop r14

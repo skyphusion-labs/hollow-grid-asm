@@ -607,7 +607,10 @@ hg_grid_local_gridcast:
     inc eax
     mov [rel gl_next_cast], eax
     mov r14d, eax
-    mov eax, [rel gl_cast_n]
+    ; Ring slot = (next_cast - 1) % MAX. Ids are 1-based, so this walks every
+    ; slot instead of pinning slot 0 once gl_cast_n saturates at MAX.
+    mov eax, r14d
+    dec eax
     xor edx, edx
     mov ecx, GL_MAX_CASTS
     div ecx

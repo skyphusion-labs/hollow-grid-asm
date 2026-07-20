@@ -12,9 +12,14 @@ cells_ready_at:  resq 1
 transit_ready_at: resq 1
 deed_n:          resd 1
 deeds:           resb DEED_MAX_ENTRIES * DEED_ENTRY_SIZE
+admins_ready:    resd 1
+admin_count:     resd 1
+admins_buf:      resb 16 * 33      ; up to 16 keepers, 32 chars + nul each
 
 section .rodata
 sp2_empty: db 0
+str_admins_env: db "ADMINS", 0
+str_admins_default: db "skyphusion", 0
 sp2_basalt: db "Basalt Relay", 0
 sp2_market: db "market", 0
 sp2_dais: db "dais", 0
@@ -123,6 +128,11 @@ sp2_reckoning_ash: db "  ash-marked, and good anyway -- the brand stays; you kee
 sp2_reckoning_strayed: db "  strayed -- you have gone a long way toward the cinders. (the way back is not closed)", 0
 sp2_reckoning_none: db "  Nothing yet weighs on either side. The wastes are still waiting to see who you are.", 0
 sp2_reckoning_evt: db "@event char.reckoning {", 34, "morality", 34, ":%lld,", 34, "standing", 34, ":", 34, "%s", 34, ",", 34, "ashsworn", 34, ":%s,", 34, "strayed", 34, ":%s,", 34, "redeemed", 34, ":%s,", 34, "deeds", 34, ":%s}", 13, 10, 0
+sp2_comma: db ",", 0
+sp2_deed_kv: db "%s", 34, "%s", 34, ":%d", 0
+sp2_standing_unaligned: db "unaligned", 0
+sp2_standing_front: db "Cinder Front", 0
+sp2_standing_ally: db "Free Folk ally", 0
 sp2_dmended: db "mended",0
 sp2_dforgave: db "forgave",0
 sp2_daided: db "aided",0
@@ -167,16 +177,141 @@ sp2_deed_labels: dq sp2_lmended, sp2_lforgave, sp2_laided, sp2_lkept, sp2_lfreed
 section .text
 
 extern snprintf, strlen, strcpy, strncpy, strcasecmp, strncasecmp, strcmp, memset, atoll
-extern hg_queue_line, hg_queue_cstr, hg_deliver_room, hg_deliver_all, hg_json_escape, hg_is_admin
+extern getenv, memcpy
+extern hg_queue_line, hg_queue_cstr, hg_deliver_room, hg_deliver_all, hg_json_escape
 extern hg_emit_vitals_now, hg_emit_affects_now, hg_emit_room_actions_now, hg_store_save, hg_room_id_cstr
 extern hg_brand_standing, hg_now_ms, hg_session_at, hg_grid_record_local_echo, hg_grid_shift_tide
 extern hg_grid_gridcast, hg_grid_presence, hg_grid_record_rescued, hg_grid_recent_rescued
 extern hg_grid_recent_fallen, hg_grid_ledger_stats, hg_grid_prune_ledger
-extern hg_emit_grid_who_now, hg_emit_char_reckoning_now
+extern hg_emit_grid_who_now
+global hg_emit_char_reckoning_now
 extern setup_cmd, queue_line_h, queue_cstr_h, skip_spaces, find_player_prefix
 extern inv_add_internal, inv_find_slot
 
+global hg_is_admin
+
+; Lazily parse the ADMINS env var (comma/space/tab separated, <=16 keepers)
+; into admins_buf. The keeper gate (wall/gridstats/gridprune) is asm-owned; C
+; no longer authors the admin list.
+admins_ensure:
+    cmp dword [rel admins_ready], 0
+    jne .fast
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    ; entry rsp%16==8; 5 pushes -> %16==0, aligned for getenv/memcpy.
+    mov dword [rel admins_ready], 1
+    mov dword [rel admin_count], 0
+    lea rdi, [rel str_admins_env]
+    call getenv wrt ..plt
+    test rax, rax
+    jz .use_default
+    cmp byte [rax], 0
+    jne .have_env
+.use_default:
+    lea rax, [rel str_admins_default]
+.have_env:
+    mov r12, rax
+.skip:
+    movzx eax, byte [r12]
+    test al, al
+    jz .done
+    cmp al, ' '
+    je .skip_adv
+    cmp al, 9
+    je .skip_adv
+    cmp al, ','
+    je .skip_adv
+    jmp .tok_start
+.skip_adv:
+    inc r12
+    jmp .skip
+.tok_start:
+    mov r13, r12
+.find_end:
+    movzx eax, byte [r12]
+    test al, al
+    jz .emit
+    cmp al, ' '
+    je .emit
+    cmp al, 9
+    je .emit
+    cmp al, ','
+    je .emit
+    inc r12
+    jmp .find_end
+.emit:
+    mov r14, r12
+    sub r14, r13
+    mov eax, [rel admin_count]
+    cmp eax, 16
+    jge .done
+    imul eax, eax, 33
+    lea r15, [rel admins_buf]
+    add r15, rax
+    cmp r14, 32
+    jbe .len_ok
+    mov r14d, 32
+.len_ok:
+    mov rdi, r15
+    mov rsi, r13
+    mov rdx, r14
+    call memcpy wrt ..plt
+    mov byte [r15 + r14], 0
+    inc dword [rel admin_count]
+    cmp byte [r12], 0
+    jne .skip
+.done:
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
+    ret
+.fast:
+    ret
+
+; int hg_is_admin(const char *name) -> eax boolean
+hg_is_admin:
+    push rbx
+    push r12
+    sub rsp, 8
+    mov r12, rdi
+    call admins_ensure
+    test r12, r12
+    jz .no
+    xor ebx, ebx
+.loop:
+    cmp ebx, [rel admin_count]
+    jge .no
+    mov eax, ebx
+    imul eax, eax, 33
+    lea rdi, [rel admins_buf]
+    add rdi, rax
+    mov rsi, r12
+    call strcasecmp wrt ..plt
+    test eax, eax
+    jz .yes
+    inc ebx
+    jmp .loop
+.yes:
+    mov eax, 1
+    jmp .out
+.no:
+    xor eax, eax
+.out:
+    add rsp, 8
+    pop r12
+    pop rbx
+    ret
+
 ; rdi=session -> rax=regard string
+; Precedence here is intentional and differs from hg_brand_standing (actions.asm):
+; brand is the title worn over the head, so chosen faction wins over morality;
+; regard is how the wastes treat you, so extreme morality (>=50 / <=-50) wins
+; over faction. Same thresholds (ashsworn, +/-50), opposite tie-break. Keep both.
 global hg_regard_of, hg_deed_add_str, hg_deed_count_str
 global hg_forgiven_has, hg_forgiven_mark, hg_kept_has, hg_kept_mark
 
@@ -916,8 +1051,200 @@ hg_cmd_reckoning:
     call setup_cmd
     sub rsp, 8
     mov rdi, r12
-    call hg_emit_char_reckoning_now wrt ..plt
+    call hg_emit_char_reckoning_now
     add rsp, 8
+    ret
+
+; void hg_emit_char_reckoning_now(session) -- the moral summary now lives in
+; asm end to end (vocabulary, deed counts, standing labels, @event). C no
+; longer authors any of the reckoning wording.
+; Frame (from rsp): 0/8/16 = evt snprintf stack args (strayed/redeemed/deeds),
+; 24 pad, 32 deeds_json[640], 672 line[128], 800 stand[160], 960 fesc[48],
+; 1008 evt[800]; total 1808 (16-aligned).
+hg_emit_char_reckoning_now:
+    push rbx
+    push r12
+    push r13
+    push r14
+    push r15
+    sub rsp, 1808
+    mov r12, rdi
+    lea r13, [r12 + SESSION_NAME]
+
+    mov rdi, r12
+    lea rsi, [rel sp2_reckoning_head]
+    call queue_line_h
+
+    ; standing label from faction
+    lea rdi, [r12 + SESSION_FACTION]
+    lea rsi, [rel sp2_front]
+    call strcmp wrt ..plt
+    test eax, eax
+    jz .st_front
+    lea rdi, [r12 + SESSION_FACTION]
+    lea rsi, [rel sp2_ally]
+    call strcmp wrt ..plt
+    test eax, eax
+    jz .st_ally
+    lea rax, [rel sp2_standing_unaligned]
+    jmp .st_have
+.st_front:
+    lea rax, [rel sp2_standing_front]
+    jmp .st_have
+.st_ally:
+    lea rax, [rel sp2_standing_ally]
+.st_have:
+    lea rdi, [rsp + 800]
+    mov esi, 160
+    mov rcx, rax
+    mov r8, [r12 + SESSION_MORALITY]
+    cmp qword [r12 + SESSION_ASHSWORN], 0
+    je .st_plain
+    lea rdx, [rel sp2_standing_ash]
+    jmp .st_fmt
+.st_plain:
+    lea rdx, [rel sp2_standing]
+.st_fmt:
+    xor eax, eax
+    call snprintf wrt ..plt
+    mov rdi, r12
+    lea rsi, [rsp + 800]
+    call queue_line_h
+
+    ; strayed/redeemed narrative
+    cmp qword [r12 + SESSION_REDEEMED], 0
+    je .n_stray
+    cmp qword [r12 + SESSION_ASHSWORN], 0
+    jne .n_red_ash
+    mov rdi, r12
+    lea rsi, [rel sp2_reckoning_returned]
+    call queue_line_h
+    jmp .n_done
+.n_red_ash:
+    mov rdi, r12
+    lea rsi, [rel sp2_reckoning_ash]
+    call queue_line_h
+    jmp .n_done
+.n_stray:
+    cmp qword [r12 + SESSION_STRAYED], 0
+    je .n_done
+    mov rdi, r12
+    lea rsi, [rel sp2_reckoning_strayed]
+    call queue_line_h
+.n_done:
+
+    ; deeds: json "{...}" + one prose line per non-zero kind
+    mov byte [rsp + 32], '{'
+    mov r14d, 1
+    xor r15d, r15d
+    xor ebx, ebx
+.deed_loop:
+    cmp ebx, DEED_KINDS
+    jge .deed_done
+    mov rdi, r13
+    mov esi, ebx
+    call hg_deed_count_h
+    mov [rsp + 0], rax
+    lea rdi, [rsp + 32]
+    add rdi, r14
+    mov esi, 640
+    sub rsi, r14
+    lea rdx, [rel sp2_deed_kv]
+    test ebx, ebx
+    jz .no_comma
+    lea rcx, [rel sp2_comma]
+    jmp .have_comma
+.no_comma:
+    lea rcx, [rel sp2_empty]
+.have_comma:
+    lea r11, [rel sp2_deed_names]
+    mov r8, [r11 + rbx*8]
+    mov r9d, [rsp + 0]
+    xor eax, eax
+    call snprintf wrt ..plt
+    test eax, eax
+    jle .adv_done
+    movsxd rax, eax
+    add r14, rax
+    cmp r14, 620
+    jbe .adv_done
+    mov r14d, 620
+.adv_done:
+    mov eax, [rsp + 0]
+    test eax, eax
+    jle .next_deed
+    lea rdi, [rsp + 672]
+    mov esi, 128
+    lea r11, [rel sp2_deed_labels]
+    mov rdx, [r11 + rbx*8]
+    mov ecx, [rsp + 0]
+    xor eax, eax
+    call snprintf wrt ..plt
+    mov rdi, r12
+    lea rsi, [rsp + 672]
+    call queue_line_h
+    mov r15d, 1
+.next_deed:
+    inc ebx
+    jmp .deed_loop
+.deed_done:
+    test r15d, r15d
+    jnz .have_any
+    mov rdi, r12
+    lea rsi, [rel sp2_reckoning_none]
+    call queue_line_h
+.have_any:
+    mov byte [rsp + r14 + 32], '}'
+    mov byte [rsp + r14 + 33], 0
+
+    ; faction (escaped) for the event standing field
+    lea rdx, [r12 + SESSION_FACTION]
+    cmp byte [rdx], 0
+    jne .fac_ok
+    lea rdx, [rel sp2_none]
+.fac_ok:
+    lea rdi, [rsp + 960]
+    mov esi, 48
+    call hg_json_escape wrt ..plt
+
+    ; bool pointers (rbx=ash, r14=strayed, r15=redeemed)
+    lea rbx, [rel sp2_false]
+    cmp qword [r12 + SESSION_ASHSWORN], 0
+    je .b_str
+    lea rbx, [rel sp2_true]
+.b_str:
+    lea r14, [rel sp2_false]
+    cmp qword [r12 + SESSION_STRAYED], 0
+    je .b_red
+    lea r14, [rel sp2_true]
+.b_red:
+    lea r15, [rel sp2_false]
+    cmp qword [r12 + SESSION_REDEEMED], 0
+    je .b_ok
+    lea r15, [rel sp2_true]
+.b_ok:
+    mov [rsp + 0], r14
+    mov [rsp + 8], r15
+    lea rax, [rsp + 32]
+    mov [rsp + 16], rax
+    lea rdi, [rsp + 1008]
+    mov esi, 800
+    lea rdx, [rel sp2_reckoning_evt]
+    mov rcx, [r12 + SESSION_MORALITY]
+    lea r8, [rsp + 960]
+    mov r9, rbx
+    xor eax, eax
+    call snprintf wrt ..plt
+    mov rdi, r12
+    lea rsi, [rsp + 1008]
+    call queue_cstr_h
+
+    add rsp, 1808
+    pop r15
+    pop r14
+    pop r13
+    pop r12
+    pop rbx
     ret
 
 hg_cmd_cache:

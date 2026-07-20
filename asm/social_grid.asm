@@ -239,21 +239,12 @@ hg_cmd_gridcast:
     call hg_grid_gridcast wrt ..plt
     test eax, eax
     jnz .fail
-    ; r14 still holds the message text (eax is 0 on success)
-    sub rsp, 320
-    mov rdi, rsp
-    mov esi, 280
-    lea rdx, [rel sp2_gridcast_prose]
-    mov rcx, r14
-    xor eax, eax
-    call snprintf wrt ..plt
-    mov rdi, r12
-    mov rsi, rsp
-    call queue_line_h
+    ; r14 still holds the message text (eax is 0 on success). The sender prose
+    ; ("You cast...") and the @event broadcast both come from the C emitter;
+    ; do not queue a second prose line here (it was doubled to the sender).
     mov rdi, r12
     mov rsi, r14
     call hg_emit_comm_gridcast_now wrt ..plt
-    add rsp, 320
     CMD_UNALIGN
     ret
 .need:
@@ -788,8 +779,10 @@ hg_cmd_witness:
 ; --- dais pledge ------------------------------------------------------------
 global hg_dais_pledge
 hg_dais_pledge:
+    ; Save the caller-owned r12; the push doubles as the C-call alignment pad
+    ; (entry rsp%16==8, one push -> 0). Do not lean on the dispatcher's reload.
+    push r12
     mov r12, rdi
-    CMD_ALIGN
     cmp qword [r12 + SESSION_ROOM], ROOM_DAIS
     jne .none
     lea rdi, [r12 + SESSION_FACTION]
@@ -863,19 +856,19 @@ hg_dais_pledge:
     mov rdi, r12
     call hg_emit_room_actions_now wrt ..plt
     add rsp, 320
-    CMD_UNALIGN
+    pop r12
     ret
 .none:
     mov rdi, r12
     lea rsi, [rel sp2_dais_none]
     call queue_line_h
-    CMD_UNALIGN
+    pop r12
     ret
 .settled:
     mov rdi, r12
     lea rsi, [rel sp2_dais_settled]
     call queue_line_h
-    CMD_UNALIGN
+    pop r12
     ret
 sp2_oath_kind: db "oath", 0
 

@@ -37,9 +37,6 @@ extern void *find_player_prefix(int64_t room, const char *prefix,
                                 const char *except);
 
 static char g_scratch[4096];
-static char *g_admins[16];
-static int g_admin_count;
-static int g_admins_ready;
 
 long long hg_now_ms(void) {
 #if defined(__linux__)
@@ -51,39 +48,8 @@ long long hg_now_ms(void) {
   return (long long)time(NULL) * 1000LL;
 }
 
-void hg_admins_init(void) {
-  if (g_admins_ready) {
-    return;
-  }
-  g_admins_ready = 1;
-  const char *env = getenv("ADMINS");
-  if (env == NULL || env[0] == '\0') {
-    env = "skyphusion";
-  }
-  char *copy = strdup(env);
-  if (copy == NULL) {
-    return;
-  }
-  char *save = NULL;
-  for (char *tok = strtok_r(copy, ", \t", &save);
-       tok != NULL && g_admin_count < 16; tok = strtok_r(NULL, ", \t", &save)) {
-    g_admins[g_admin_count++] = strdup(tok);
-  }
-  free(copy);
-}
-
-int hg_is_admin(const char *name) {
-  hg_admins_init();
-  if (name == NULL) {
-    return 0;
-  }
-  for (int i = 0; i < g_admin_count; i++) {
-    if (g_admins[i] != NULL && strcasecmp(g_admins[i], name) == 0) {
-      return 1;
-    }
-  }
-  return 0;
-}
+/* hg_is_admin / the ADMINS keeper list now live in asm (social_ledger.asm).
+ * C no longer authors the admin gate for wall/gridstats/gridprune. */
 
 int hg_json_escape(char *dst, size_t cap, const char *src) {
   if (dst == NULL || cap == 0) {
@@ -615,7 +581,7 @@ void hg_emit_grid_who_now(void *session) {
   size_t o = 0;
   json[o++] = '[';
   int first = 1;
-  const char *world = "Basalt Relay";
+  const char *world = hg_grid_world_name();
   for (int i = 0; i < HG_MAX_SESSIONS; i++) {
     void *s = hg_session_at(i);
     if (s == NULL) {
@@ -686,104 +652,9 @@ void hg_emit_grid_who_now(void *session) {
   }
 }
 
-void hg_emit_char_reckoning_now(void *session) {
-  const char *faction = hg_s_str(session, HG_SESSION_FACTION);
-  const char *standing = "unaligned";
-  if (faction != NULL && strcmp(faction, "front") == 0) {
-    standing = "Cinder Front";
-  } else if (faction != NULL && strcmp(faction, "ally") == 0) {
-    standing = "Free Folk ally";
-  }
-  long long mor = hg_s_i64(session, HG_SESSION_MORALITY);
-  int ash = hg_s_i64(session, HG_SESSION_ASHSWORN) ? 1 : 0;
-  int strayed = hg_s_i64(session, HG_SESSION_STRAYED) ? 1 : 0;
-  int redeemed = hg_s_i64(session, HG_SESSION_REDEEMED) ? 1 : 0;
-  const char *self = hg_s_str(session, HG_SESSION_NAME);
-
-  hg_queue_line(session, "The Grid has kept count. This is the sum of you so far:");
-  char stand_line[160];
-  if (ash) {
-    snprintf(stand_line, sizeof(stand_line),
-             "  standing: %s   (morality %lld)   ASH-SWORN", standing,
-             (long long)mor);
-  } else {
-    snprintf(stand_line, sizeof(stand_line),
-             "  standing: %s   (morality %lld)", standing, (long long)mor);
-  }
-  hg_queue_line(session, stand_line);
-  if (redeemed && !ash) {
-    hg_queue_line(session,
-                  "  the Returned -- you strayed toward the cinders and found "
-                  "your way back.");
-  } else if (redeemed && ash) {
-    hg_queue_line(session,
-                  "  ash-marked, and good anyway -- the brand stays; you keep "
-                  "choosing well regardless.");
-  } else if (strayed) {
-    hg_queue_line(session,
-                  "  strayed -- you have gone a long way toward the cinders. "
-                  "(the way back is not closed)");
-  }
-
-  static const char *kinds[] = {
-      "mended",    "forgave",  "aided",     "kept",     "freed",
-      "sheltered", "stood",    "inscribed", "restored", "slain",
-      "stolen",    "pledged",  "defected"};
-  static const char *labels[] = {
-      "  mended the hurt of others: ",
-      "  souls you chose to forgive: ",
-      "  aid left for strangers you'll never meet: ",
-      "  names of the fallen you kept: ",
-      "  souls you cut out of the cages: ",
-      "  distress calls you answered: ",
-      "  times you stood with the free folk: ",
-      "  words you left for whoever comes next: ",
-      "  dead nodes you brought back: ",
-      "  lives you took: ",
-      "  thefts: ",
-      "  times you swore to the Cinder Front: ",
-      "  times you turned on the Front: "};
-
-  char deeds_json[640];
-  size_t o = 0;
-  deeds_json[o++] = '{';
-  int any = 0;
-  for (size_t k = 0; k < sizeof(kinds) / sizeof(kinds[0]); k++) {
-    int count = hg_deed_count_str(self, kinds[k]);
-    int w = snprintf(deeds_json + o, sizeof(deeds_json) - o, "%s\"%s\":%d",
-                     k ? "," : "", kinds[k], count);
-    if (w > 0) {
-      o += (size_t)w;
-    }
-    if (count > 0) {
-      char line[120];
-      snprintf(line, sizeof(line), "%s%d", labels[k], count);
-      hg_queue_line(session, line);
-      any = 1;
-    }
-  }
-  if (o + 2 > sizeof(deeds_json)) {
-    o = sizeof(deeds_json) - 2;
-  }
-  deeds_json[o++] = '}';
-  deeds_json[o] = '\0';
-  if (!any) {
-    hg_queue_line(session,
-                  "  Nothing yet weighs on either side. The wastes are still "
-                  "waiting to see who you are.");
-  }
-  char fesc[40];
-  hg_json_escape(fesc, sizeof(fesc), faction ? faction : "none");
-  char evt[800];
-  snprintf(evt, sizeof(evt),
-           "@event char.reckoning "
-           "{\"morality\":%lld,\"standing\":\"%s\",\"ashsworn\":%s,"
-           "\"strayed\":%s,\"redeemed\":%s,\"deeds\":%s}\r\n",
-           (long long)mor, fesc, ash ? "true" : "false",
-           strayed ? "true" : "false", redeemed ? "true" : "false",
-           deeds_json);
-  hg_queue_cstr(session, evt);
-}
+/* hg_emit_char_reckoning_now now lives entirely in asm (social_ledger.asm):
+ * the moral vocabulary (deed labels, standing names, narrative) and the
+ * char.reckoning @event are authored there. C no longer owns any of it. */
 
 void hg_emit_comm_gridcast_now(void *session, const char *text) {
   const char *self = hg_s_str(session, HG_SESSION_NAME);
@@ -796,7 +667,7 @@ void hg_emit_comm_gridcast_now(void *session, const char *text) {
   char fesc[80], tesc[200], wesc[48];
   hg_json_escape(fesc, sizeof(fesc), self ? self : "");
   hg_json_escape(tesc, sizeof(tesc), text ? text : "");
-  hg_json_escape(wesc, sizeof(wesc), "Basalt Relay");
+  hg_json_escape(wesc, sizeof(wesc), hg_grid_world_name());
   char evt[400];
   snprintf(evt, sizeof(evt),
            "@event comm.gridcast "

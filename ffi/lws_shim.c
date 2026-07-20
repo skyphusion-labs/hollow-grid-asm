@@ -21,11 +21,7 @@ extern size_t hg_app_session_size(void);
 extern int hg_app_callback(void *wsi, int event, void *session,
                            const unsigned char *input, size_t length);
 extern void hg_heartbeat(long long now_ms);
-extern void *hg_session_at(int index);
-extern void hg_combat_round(void *session, void *wsi);
 extern long long hg_now_ms(void);
-extern void hg_emit_vitals_now(void *session, const char *room_id);
-extern const char *hg_room_id_cstr(long long room);
 extern void hg_session_queue(void *session, void *wsi, const void *data,
                              size_t len);
 
@@ -40,91 +36,12 @@ static void stop_server(int signal_number) {
   stopped = 1;
 }
 
-/* Called from asm at combat start: arm first swing for +2000ms so smoke can
- * observe inCombat and clear its event log before rounds arrive. */
-void hg_combat_arm(void *session, void *wsi) {
-  if (session == NULL) {
-    return;
-  }
-  long long now = hg_now_ms();
-  hg_s_set_i64(session, HG_SESSION_LAST_TICK, now + 2000);
-  if (wsi != NULL) {
-    *(void **)((unsigned char *)session + HG_SESSION_WSI) = wsi;
-  }
+/* Thin lws wake for asm. hg_combat_arm (asm) owns the combat cadence state
+ * (LAST_TICK, cached wsi); it calls here only to nudge the event loop so a new
+ * combatant is serviced within one beat instead of waiting on idle recv. */
+void hg_wake_service(void) {
   if (g_context != NULL) {
     lws_cancel_service(g_context);
-  }
-}
-
-
-/* Resting regen on the living-world beat (same 2s cadence as Go). Owned here
- * so idle recv waits cannot starve asm tick_session. */
-static void hg_rest_service(long long now_ms) {
-  static long long last_rest_ms;
-  if (last_rest_ms != 0 && now_ms - last_rest_ms < 2000) {
-    return;
-  }
-  last_rest_ms = now_ms;
-  for (int i = 0; i < HG_MAX_SESSIONS; i++) {
-    unsigned char *session = (unsigned char *)hg_session_at(i);
-    if (session == NULL) {
-      continue;
-    }
-    if (hg_s_i64(session, HG_SESSION_IN_COMBAT)) {
-      continue;
-    }
-    const char *pos = hg_s_str(session, HG_SESSION_POSITION);
-    if (pos == NULL || strcmp(pos, "resting") != 0) {
-      continue;
-    }
-    long long hp = hg_s_i64(session, HG_SESSION_HP);
-    long long max_hp = hg_s_i64(session, HG_SESSION_MAX_HP);
-    if (hp >= max_hp) {
-      continue;
-    }
-    hp += 2;
-    if (hp > max_hp) {
-      hp = max_hp;
-    }
-    hg_s_set_i64(session, HG_SESSION_HP, hp);
-    long long room = hg_s_i64(session, HG_SESSION_ROOM);
-    const char *rid = hg_room_id_cstr(room);
-    hg_emit_vitals_now(session, rid);
-    struct lws *wsi = *(struct lws **)(session + HG_SESSION_WSI);
-    if (wsi != NULL) {
-      lws_callback_on_writable(wsi);
-    }
-  }
-}
-
-/* One swing per due beat. Never nest lws_service here -- nested zero-timeout
- * pumps hang after attack. Drain only via WRITEABLE on the outer service. */
-static void hg_combat_service(long long now_ms) {
-  for (int i = 0; i < HG_MAX_SESSIONS; i++) {
-    unsigned char *session = (unsigned char *)hg_session_at(i);
-    if (session == NULL) {
-      continue;
-    }
-    if (!hg_s_i64(session, HG_SESSION_IN_COMBAT)) {
-      continue;
-    }
-    long long last = hg_s_i64(session, HG_SESSION_LAST_TICK);
-    struct lws *wsi = *(struct lws **)(session + HG_SESSION_WSI);
-    if (wsi == NULL) {
-      continue;
-    }
-    if (last == 0) {
-      hg_s_set_i64(session, HG_SESSION_LAST_TICK, now_ms + 2000);
-      continue;
-    }
-    if (now_ms < last) {
-      continue;
-    }
-    hg_combat_round(session, wsi);
-    lws_callback_on_writable(wsi);
-    if (hg_s_i64(session, HG_SESSION_IN_COMBAT)) {
-      hg_s_set_i64(session, HG_SESSION_LAST_TICK, now_ms + 2000);
-    }
   }
 }
 
@@ -288,9 +205,9 @@ static lws_sorted_usec_list_t g_tick_sul;
 
 static void tick_service(lws_sorted_usec_list_t *sul) {
   long long tick_now = hg_now_ms();
+  /* asm hg_heartbeat owns rest regen and the combat cadence end to end; the
+   * shim keeps only the ~50ms beat and the federation poll. */
   hg_heartbeat(tick_now);
-  hg_combat_service(tick_now);
-  hg_rest_service(tick_now);
   hg_grid_federation_tick(tick_now);
   lws_sul_schedule(g_context, 0, sul, tick_service, 50 * LWS_US_PER_MS);
 }

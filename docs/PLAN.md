@@ -147,6 +147,62 @@ correct `@event` (`grid.fallen`, `grid.rescued_roll`, `grid.ledger_stats`,
 **Verify (rancid, Docker ubuntu:24.04):** `make check` green (foundation,
 gameplay, federation, `ws_remote_federation`) after LocalHub port.
 
+### Evidence (Fable-5 review cuts, 2026-07-20)
+
+Two Fable-5 reviews (correctness + honest ASM ownership) knocked out on
+`fix/fable5-review-cuts`. What moved:
+
+- **A1 tell (`asm/social.asm`):** `tell_impl` now spills prefix-len / found /
+  current to the frame across `hg_session_at` / `strncasecmp` (PLT clobbers
+  r8/r10/r11), matching `find_player_prefix`. The `need` / `no_one` error paths
+  no longer leak the 1040-byte frame (single teardown at `.out`).
+- **A2 gridcast ring (`asm/grid_local.asm`):** slot is now
+  `(gl_next_cast - 1) % GL_MAX_CASTS`, so the 200-slot cast ring walks every
+  slot instead of pinning slot 0 once `gl_cast_n` saturated.
+- **A3 gridcast prose (`asm/social_grid.asm`):** dropped the duplicate
+  `sp2_gridcast_prose` line; the sender prose + `comm.gridcast` broadcast both
+  come from the C emitter once.
+- **A4 callee-saved (`asm/social_grid.asm`, `asm/combat.asm`):** `hg_dais_pledge`
+  and `hg_cmd_join` save/restore the `r12`/`r13` they clobber (push/pop keep the
+  16-byte alignment) instead of leaning on the dispatcher.
+- **B5 reckoning (`asm/social_ledger.asm`, `ffi/format.c`):** the moral summary
+  (`hg_emit_char_reckoning_now`) is asm end to end -- standing labels, deed
+  labels, narrative, and the `char.reckoning` `@event` use the existing
+  `sp2_reckoning_*` / `sp2_deed_*` tables. The C deed/label/standing maps are
+  deleted; C no longer authors the moral vocabulary.
+- **B6 tick cadence (`ffi/lws_shim.c`, `asm/combat.asm`):** rest regen (+2 hp /
+  2s) and combat cadence (arm +2000ms, round 2000ms) are owned by asm
+  `hg_heartbeat`; the C `hg_rest_service` / `hg_combat_service` duplicates are
+  deleted. The shim keeps only the ~50ms beat + federation poll and a thin
+  `hg_wake_service` (lws_cancel_service) that asm `hg_combat_arm` calls.
+- **B7 admin gate (`asm/social_ledger.asm`, `ffi/format.c`):** `hg_is_admin` and
+  the `ADMINS` parse are asm (lazy `admins_ensure`, `getenv` + tokenise). The C
+  `hg_admins_init` / `hg_is_admin` and the admin string list are deleted.
+- **B9 world id + thresholds:** `@event` world claims (`grid.who`,
+  `comm.gridcast`) thread `hg_grid_world_name()` (configured world id) instead of
+  a hardcoded literal; `hg_regard_of` documents the intentional precedence
+  difference vs `hg_brand_standing`.
+- **C10 soak (`tests/ws_localhub_soak.py`):** floods 260 gridcasts (> the
+  200-slot ring) then reads back `ping` / `witness` / `saved` / `gridstats` /
+  `who` and `/health`, asserting the process survives the wrap. Also exercises
+  the asm keeper gate both ways (keeper allowed, non-keeper refused).
+- **C11 resilience (`tests/ws_remote_hub_resilience.py`):** boots remote-mode
+  against a hub that returns malformed JSON, then 503s, then drops connections
+  mid-suite; asserts `/health` stays 200, the process never exits, and `whoami`
+  fails open to the local self.
+
+**Deferred:** B8 (whoami/travel identity-merge and target-matching policy still
+in `ffi/grid_hub.c`). It is the largest refactor (new struct-returning hub
+accessors + a full asm re-author of both prose surfaces and the merge/matching
+policy) and touches the working federation path; deferring keeps the node green
+and shippable. World-id threading (B9) and the admin gate (B7) already removed
+the adjacent C policy. Tracked as a follow-up.
+
+**Verify (rancid, podman, ubuntu:24.04, linux/amd64):**
+`podman build --target build` runs `make check` **green**: foundation
+(persistence, hardening, gameplay, federation), `ws_remote_federation`,
+`ws_localhub_soak`, `ws_remote_hub_resilience`.
+
 ## Phase 3: federation
 
 - [x] Add a best-effort Grid Hub client behind a replaceable boundary
