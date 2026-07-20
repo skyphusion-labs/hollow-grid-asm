@@ -52,6 +52,8 @@ check: $(BIN)
 	./$(BIN) --help >/dev/null
 	./tests/foundation.sh ./$(BIN)
 	python3 ./tests/ws_remote_federation.py ./$(BIN)
+	python3 ./tests/ws_localhub_soak.py ./$(BIN)
+	python3 ./tests/ws_remote_hub_resilience.py ./$(BIN)
 
 # Blocking upstream smoke.mjs (Phase 12 SKIP when DUSTFALL_URL unreachable).
 smoke: $(BIN)

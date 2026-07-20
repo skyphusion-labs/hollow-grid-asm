@@ -27,7 +27,12 @@ NASM engine
 
 The C shim translates libwebsockets callbacks and buffers into a stable
 assembly-facing ABI. It must not decide commands, thresholds, or LocalHub
-store mutations. `format.c` serializes `@event`/prose from values asm chose.
+store mutations, and it does not author the moral vocabulary, run the game
+cadence, or gate keepers: the reckoning summary (deed labels, standing names,
+`char.reckoning`), rest regen + combat cadence (asm `hg_heartbeat` /
+`hg_combat_arm`; the shim keeps only the ~50ms beat and a thin `hg_wake_service`
+that pokes the event loop), and the `ADMINS` keeper gate (`hg_is_admin`) all
+live in NASM. `format.c` serializes `@event`/prose from values asm chose.
 `grid_hub.c` owns RemoteHub libcurl/cJSON only; LocalHub memory and tide clamp
 live in NASM (`asm/grid_local.asm`).
 

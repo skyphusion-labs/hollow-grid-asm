@@ -41,10 +41,12 @@ client -> libwebsockets -> tiny C ABI shim -> NASM engine
 
 NASM owns every rule and every in-process store that can live there: command
 dispatch, mutations, action menus and valence, dream selection, prune policy,
-LocalHub federation memory, and tide clamp. C is three narrow files:
-`lws_shim.c` (libwebsockets ABI), `format.c` (serialize `@event`/prose from
-values asm chose), and `grid_hub.c` (RemoteHub libcurl/cJSON plus hub-backed
-prose wrappers). C never decides a command, moral menu, or threshold.
+LocalHub federation memory, tide clamp, the moral reckoning vocabulary, the
+`ADMINS` keeper gate, and the rest-regen + combat cadence. C is three narrow
+files: `lws_shim.c` (libwebsockets ABI, plus the ~50ms beat and a thin lws
+wake), `format.c` (serialize `@event`/prose from values asm chose), and
+`grid_hub.c` (RemoteHub libcurl/cJSON plus hub-backed prose wrappers). C never
+decides a command, moral menu, threshold, keeper, or tick cadence.
 
 ## Repository guide
 

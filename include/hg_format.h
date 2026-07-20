@@ -86,8 +86,8 @@ extern void hg_cells_ready_at_set(long long when);
 extern long long hg_transit_ready_at_get(void);
 extern void hg_transit_ready_at_set(long long when);
 
+/* hg_is_admin is implemented in asm (social_ledger.asm). */
 int hg_is_admin(const char *name);
-void hg_admins_init(void);
 
 /* Broadcast helpers (iterate asm session registry). */
 void hg_deliver_room(int64_t room, const char *text, const char *except_name);

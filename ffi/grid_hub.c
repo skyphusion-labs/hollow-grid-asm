@@ -310,6 +310,12 @@ void hg_grid_shutdown(void) {
 
 int hg_grid_remote(void) { return g.remote; }
 
+/* Configured world id, so @event payloads that claim a world id report the
+ * name this node was booted with instead of a hardcoded literal. */
+const char *hg_grid_world_name(void) {
+  return g.world_name[0] != '\0' ? g.world_name : "Basalt Relay";
+}
+
 int hg_grid_health(int *ok, long *latency_ms) {
   if (!g.remote) {
     if (ok != NULL) {

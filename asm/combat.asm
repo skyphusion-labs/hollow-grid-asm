@@ -208,7 +208,7 @@ extern hg_emit_vitals_dyn
 extern hg_emit_affects_dyn
 extern hg_emit_dream_now
 extern hg_now_ms
-extern hg_combat_arm
+extern hg_wake_service
 extern hg_session_flush
 extern hg_grid_on_kill
 extern hg_grid_on_death
@@ -233,6 +233,7 @@ global hg_room_live_mobs
 global hg_session_register
 global hg_session_unregister
 global hg_heartbeat
+global hg_combat_arm
 global hg_cmd_wield
 global hg_cmd_remove
 global hg_cmd_attack
@@ -627,8 +628,8 @@ hg_session_pulse:
 .have_wsi:
     mov [r12 + SESSION_WSI], r13
     ; Cadence: LAST_TICK==0 arms first due at now+HG_COMBAT_MS (smoke mid-fight
-    ; window). When due, one combat_round then re-arm. C hg_combat_service is a
-    ; parallel owner of the same fields; both must agree on the arm delay.
+    ; window). When due, one combat_round then re-arm. This is the sole owner of
+    ; the combat cadence now; the shim no longer runs a parallel service.
     mov rax, [r12 + SESSION_LAST_TICK]
     test rax, rax
     jnz .check_due
@@ -778,6 +779,32 @@ hg_session_unregister:
     pop r14
     pop r12
     pop rbx
+    ret
+
+; void hg_combat_arm(session, wsi) -- arm the first swing at now+HG_COMBAT_MS
+; and cache the wsi. Cadence is asm-owned; the shim only supplies the lws
+; wake (hg_wake_service -> lws_cancel_service) so the service loop notices the
+; new combatant within one beat instead of waiting on idle recv.
+hg_combat_arm:
+    push r12
+    push r13
+    sub rsp, 8
+    mov r12, rdi
+    mov r13, rsi
+    test r12, r12
+    jz .out
+    call hg_now_ms wrt ..plt
+    add rax, HG_COMBAT_MS
+    mov [r12 + SESSION_LAST_TICK], rax
+    test r13, r13
+    jz .wake
+    mov [r12 + SESSION_WSI], r13
+.wake:
+    call hg_wake_service wrt ..plt
+.out:
+    add rsp, 8
+    pop r13
+    pop r12
     ret
 
 hg_heartbeat:
@@ -985,7 +1012,7 @@ hg_cmd_attack:
     ; Arm first swing at now+2000ms and set a wsi timer so lws_service wakes.
     mov rdi, r12
     mov rsi, r13
-    call hg_combat_arm wrt ..plt
+    call hg_combat_arm
     jmp .out
 .already:
     mov rdi, r12
@@ -1178,6 +1205,11 @@ hg_cmd_sleep:
     ret
 
 hg_cmd_join:
+    ; Save the caller-owned r12/r13 that setup_cmd overwrites; two pushes keep
+    ; the entry alignment (rsp%16==8) so the sub rsp,8 still lands PLT calls on
+    ; a 16-byte boundary. Do not lean on the dispatcher to restore them.
+    push r12
+    push r13
     call setup_cmd
     sub rsp, 8
     cmp qword [r12 + SESSION_ROOM], ROOM_DAIS
@@ -1185,6 +1217,8 @@ hg_cmd_join:
     mov rdi, r12
     call hg_dais_pledge wrt ..plt
     add rsp, 8
+    pop r13
+    pop r12
     ret
 .try_market:
     cmp qword [r12 + SESSION_ROOM], ROOM_MARKET
@@ -1239,6 +1273,8 @@ hg_cmd_join:
     mov rdi, r12
     call hg_store_save
     add rsp, 8
+    pop r13
+    pop r12
     ret
 .no_oath:
     mov rdi, r12
@@ -1247,6 +1283,8 @@ hg_cmd_join:
     mov ecx, no_oath_len
     call queue_bytes
     add rsp, 8
+    pop r13
+    pop r12
     ret
 
 hg_cmd_defend:

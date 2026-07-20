@@ -15,6 +15,9 @@
  * ws://127.0.0.1:<port>/ws by convention, computed by the caller).
  * hub_url NULL/empty selects LocalHub (in-memory, always available).
  * Returns 0 on success. Never fails hard: LocalHub construction cannot fail. */
+/* Configured world id (as booted), for @event payloads that claim a world. */
+const char *hg_grid_world_name(void);
+
 int hg_grid_boot(const char *world_name, const char *world_url,
                  const char *hub_url, const char *token);
 void hg_grid_shutdown(void);
