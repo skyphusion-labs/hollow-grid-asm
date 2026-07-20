@@ -19,6 +19,7 @@ ASM_SRC := \
 	asm/social.asm \
 	asm/social_port2.asm \
 	asm/social_port3.asm \
+	asm/actions.asm \
 	asm/content.asm \
 	asm/event.asm \
 	asm/rooms.asm \

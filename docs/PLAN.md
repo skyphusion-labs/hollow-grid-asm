@@ -130,6 +130,21 @@ correct `@event` (`grid.fallen`, `grid.rescued_roll`, `grid.ledger_stats`,
 `grid.ledger_pruned`) and prose, and the `gridstats`/`gridprune` admin gate
 (asm `hg_is_admin`) refuses a non-keeper with no ledger data leaked.
 
+### Evidence (action menus / dream / prune policy to asm, #24)
+
+**In progress** on `fix/asm-actions-menu-boundary` (closes #24):
+
+- `asm/actions.asm` owns `hg_actions_json_for` (market/tavern/dais menus +
+  valence), `hg_brand_standing`, `hg_dream_compose` (threshold/text choice),
+  and prune ambient kind policy (`hg_prune_kind_ambient`,
+  `hg_prune_ambient_count`, `hg_prune_ambient_at`).
+- `format.c` only escapes and wraps `@event` lines from values asm chose.
+- `grid_hub.c` asks asm which kinds are ambient; no hardcoded prune list.
+
+**Verify (rancid, Docker ubuntu:24.04):** `docker build --platform linux/amd64`
+runs `make check` green. Spot-check: market `room.actions` includes sell +
+steal with `join` valence `grave`; tavern offers `buy dust`.
+
 ## Phase 3: federation
 
 - [x] Add a best-effort Grid Hub client behind a replaceable boundary

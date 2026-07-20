@@ -39,12 +39,12 @@ client -> libwebsockets -> tiny C ABI shim -> NASM engine
                                                  persistence/federation seams
 ```
 
-NASM decides every rule: when a command applies, what it mutates, and what
-prose or event it produces. C is three narrow files: `lws_shim.c` (the
-libwebsockets ABI shim), `format.c` (bounded JSON/prose formatting and
-hub-row presentation), and `grid_hub.c` (federation HTTP/JSON transport). C
-may format `@event` JSON from state or hub rows that asm already decided; it
-never decides a command or mutates game rules.
+NASM decides every rule: when a command applies, what it mutates, which actions
+appear (and their valence), dream selection, and prune kinds. C is three narrow
+files: `lws_shim.c` (libwebsockets ABI shim), `format.c` (serialize `@event`/
+prose from values asm chose), and `grid_hub.c` (federation HTTP/JSON transport
+and hub storage). C never decides a command, moral menu, or game-rule
+threshold, and never mutates game rules.
 
 ## Repository guide
 

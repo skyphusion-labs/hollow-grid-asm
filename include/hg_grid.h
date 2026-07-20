@@ -142,6 +142,10 @@ int hg_grid_recent_fallen(int limit, hg_grid_fallen_row *out, size_t cap,
 int hg_grid_ledger_stats(hg_grid_ledger_row *out, size_t cap,
                         size_t *out_count);
 int hg_grid_prune_ledger(int *removed);
+/* Asm policy: which trace kinds gridprune removes. */
+int hg_prune_kind_ambient(const char *kind);
+int hg_prune_ambient_count(void);
+const char *hg_prune_ambient_at(int index);
 int hg_grid_casts_since(int since_id, int limit, hg_grid_cast_row *out,
                        size_t cap, size_t *out_count);
 int hg_grid_presence(long long max_age_ms, hg_grid_presence_row *out,

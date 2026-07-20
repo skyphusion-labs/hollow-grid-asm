@@ -18,6 +18,11 @@
 #include <sys/time.h>
 #include <time.h>
 
+/* Asm owns which ledger kinds count as ambient / prunable. */
+extern int hg_prune_kind_ambient(const char *kind);
+extern int hg_prune_ambient_count(void);
+extern const char *hg_prune_ambient_at(int index);
+
 #define HG_RPC_TIMEOUT_MS 2000L
 #define HG_MAX_TRACES 200
 #define HG_MAX_ECHO 128
@@ -1477,9 +1482,7 @@ int hg_grid_prune_ledger(int *removed) {
     int before = g.trace_count;
     int write = 0;
     for (int i = 0; i < g.trace_count; ++i) {
-      const char *kind = g.traces[i].kind;
-      if (strcmp(kind, "ghost") == 0 || strcmp(kind, "passage") == 0 ||
-          strcmp(kind, "recall") == 0) {
+      if (hg_prune_kind_ambient(g.traces[i].kind)) {
         continue;
       }
       if (write != i) {
@@ -1495,9 +1498,13 @@ int hg_grid_prune_ledger(int *removed) {
   }
   cJSON *params = cJSON_CreateArray();
   cJSON *kinds = cJSON_CreateArray();
-  cJSON_AddItemToArray(kinds, cJSON_CreateString("ghost"));
-  cJSON_AddItemToArray(kinds, cJSON_CreateString("passage"));
-  cJSON_AddItemToArray(kinds, cJSON_CreateString("recall"));
+  int n = hg_prune_ambient_count();
+  for (int i = 0; i < n; ++i) {
+    const char *k = hg_prune_ambient_at(i);
+    if (k != NULL) {
+      cJSON_AddItemToArray(kinds, cJSON_CreateString(k));
+    }
+  }
   cJSON_AddItemToArray(params, kinds);
   cJSON *result = NULL;
   if (rpc_call("pruneLedgerKinds", params, &result) != 0) {

@@ -13,6 +13,8 @@ int hg_fmt_vitals(char *buf, size_t cap, const void *session, const char *room_i
 int hg_fmt_affects(char *buf, size_t cap, const void *session);
 int hg_fmt_equipment(char *buf, size_t cap, const void *session);
 int hg_fmt_dream(char *buf, size_t cap, const void *session);
+int hg_dream_compose(const void *session, char *text, size_t tcap,
+                     char *subject, size_t scap);
 int hg_fmt_world_state(char *buf, size_t cap, int64_t tick, const char *phase);
 int hg_fmt_combat_start(char *buf, size_t cap, const char *mob_id,
                         const char *mob_name);
@@ -52,6 +54,7 @@ void hg_combat_arm(void *session, void *wsi);
 const char *hg_brand_standing(const void *session);
 int hg_players_json(int64_t room, const char *except_name, char *buf,
                     size_t cap);
+/* Action menu + valence authored in asm; C only emits @event around it. */
 int hg_actions_json_for(void *session, char *buf, size_t cap);
 void hg_emit_room_actions_now(void *session);
 void hg_emit_grid_who_now(void *session);

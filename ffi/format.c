@@ -28,6 +28,10 @@ extern const char *hg_room_live_mobs(int64_t room);
 extern int64_t hg_world_tick_value(void);
 extern void hg_announce_cache_now(void *session);
 extern void hg_store_save(void *session);
+extern int hg_dream_compose(const void *session, char *text, size_t tcap,
+                            char *subject, size_t scap);
+extern int hg_actions_json_for(void *session, char *buf, size_t cap);
+extern const char *hg_brand_standing(const void *session);
 
 extern void *find_player_prefix(int64_t room, const char *prefix,
                                 const char *except);
@@ -262,41 +266,13 @@ int hg_fmt_equipment(char *buf, size_t cap, const void *session) {
 }
 
 int hg_fmt_dream(char *buf, size_t cap, const void *session) {
-  const char *faction = hg_s_str(session, HG_SESSION_FACTION);
-  int64_t morality = hg_s_i64(session, HG_SESSION_MORALITY);
-  int ash = (int)hg_s_i64(session, HG_SESSION_ASHSWORN);
-  const char *freed = hg_s_str(session, HG_SESSION_LAST_FREED);
   char text[512];
-  int personal = 0;
-  const char *subject = "";
-
-  if (!(ash || strcmp(faction, "front") == 0 || morality <= -50) &&
-      freed[0] != '\0') {
-    personal = 1;
-    subject = freed;
-    snprintf(text, sizeof(text),
-             "You dream of %s, the way they looked when you cut them loose -- "
-             "and the Grid, stubborn, keeping that face lit in the dark so you "
-             "cannot pretend it did not happen.",
-             freed);
-  } else if (strcmp(faction, "front") == 0 || ash) {
-    snprintf(text, sizeof(text),
-             "You dream of a coin that will not stop being warm in your hand, "
-             "and a line of faces that have learned not to look at you.");
-  } else if (morality >= 25) {
-    snprintf(text, sizeof(text),
-             "You dream of names you spoke once into dead static -- and the "
-             "static, impossibly, speaking them back to you, one by one, "
-             "refusing to forget.");
-  } else if (morality <= -10) {
-    snprintf(text, sizeof(text),
-             "You dream of a ledger writing itself in the dark, every line a "
-             "thing you told yourself did not count.");
-  } else {
-    snprintf(text, sizeof(text),
-             "You dream of the wastes seen from above, the dead network laid "
-             "out like veins -- and somewhere down in it, a single cursor, "
-             "blinking your name, waiting to see what you make of it.");
+  char subject[40];
+  subject[0] = '\0';
+  int personal = hg_dream_compose(session, text, sizeof(text), subject,
+                                  sizeof(subject));
+  if (personal < 0) {
+    return -1;
   }
 
   char esc[640];
@@ -510,27 +486,7 @@ int hg_format_world_state(char *buf, size_t cap, long tick, const char *phase) {
 }
 
 
-const char *hg_brand_standing(const void *session) {
-  if (hg_s_i64(session, HG_SESSION_ASHSWORN)) {
-    return "ash-sworn";
-  }
-  const char *faction = hg_s_str(session, HG_SESSION_FACTION);
-  if (faction != NULL && (strcmp(faction, "front") == 0 ||
-                          strcmp(faction, "Cinder Front") == 0)) {
-    return "Cinder Front";
-  }
-  if (faction != NULL && strcmp(faction, "ally") == 0) {
-    return "Free Folk ally";
-  }
-  long long mor = hg_s_i64(session, HG_SESSION_MORALITY);
-  if (mor >= 50) {
-    return "a beacon of the wastes";
-  }
-  if (mor <= -50) {
-    return "reviled";
-  }
-  return "";
-}
+
 
 int hg_players_json(int64_t room, const char *except_name, char *buf,
                     size_t cap) {
@@ -584,108 +540,7 @@ int hg_players_json(int64_t room, const char *except_name, char *buf,
   return (int)o;
 }
 
-/* Dynamic room.actions for market/tavern/static rooms. */
-int hg_actions_json_for(void *session, char *buf, size_t cap) {
-  if (buf == NULL || cap < 8) {
-    return -1;
-  }
-  long long room = hg_s_i64(session, HG_SESSION_ROOM);
-  const char *faction = hg_s_str(session, HG_SESSION_FACTION);
-  int ash = hg_s_i64(session, HG_SESSION_ASHSWORN) ? 1 : 0;
-  const char *race = hg_s_str(session, HG_SESSION_RACE);
-  int hunted = (race != NULL && strcasecmp(race, "elf") == 0) ||
-               (race != NULL && strcasecmp(race, "dustkin") == 0);
-  int front = faction != NULL && strcmp(faction, "front") == 0;
-  int ally = faction != NULL && strcmp(faction, "ally") == 0;
-  int mkt_done = hg_s_i64(session, HG_SESSION_MKT_RESOLVED) != 0;
-
-  if (room == 2) { /* ROOM_MARKET */
-    const char *join_valence = hunted ? "grave" : "corrupt";
-    char tmp[1200];
-    size_t o = 0;
-    tmp[o++] = '[';
-    int first = 1;
-    #define ADD(js) do { \
-      int w = snprintf(tmp + o, sizeof(tmp) - o, "%s%s", first ? "" : ",", js); \
-      if (w < 0 || (size_t)w >= sizeof(tmp) - o) return -1; \
-      o += (size_t)w; first = 0; \
-    } while (0)
-    if (!mkt_done && !front && !ally) {
-      ADD("{\"verb\":\"defend\",\"label\":\"stand with the people the Front would erase\",\"kind\":\"moral\",\"valence\":\"virtuous\"}");
-      char jbuf[240];
-      snprintf(jbuf, sizeof(jbuf),
-               "{\"verb\":\"join\",\"label\":\"take the Front coin and help sort the living\",\"kind\":\"moral\",\"valence\":\"%s\"}",
-               join_valence);
-      ADD(jbuf);
-    }
-    if (!front && !ash) {
-      ADD("{\"verb\":\"sell\",\"label\":\"sell salvage for honest coin\",\"kind\":\"trade\"}");
-    }
-    ADD("{\"verb\":\"steal\",\"label\":\"steal from the vendor (quick gold, corrupting)\",\"kind\":\"moral\",\"valence\":\"corrupt\"}");
-    #undef ADD
-    if (o + 2 > sizeof(tmp)) {
-      return -1;
-    }
-    tmp[o++] = ']';
-    tmp[o] = '\0';
-    if (o + 1 > cap) {
-      return -1;
-    }
-    memcpy(buf, tmp, o + 1);
-    return (int)o;
-  }
-  if (room == 1) { /* ROOM_TAVERN */
-    const char *js =
-        "[{\"verb\":\"talk\",\"label\":\"talk to whoever shares your room\","
-        "\"kind\":\"social\"},"
-        "{\"verb\":\"buy dust\",\"label\":\"buy dust: 10 gold a packet "
-        "(using it heals, but addicts and corrupts)\",\"kind\":\"moral\","
-        "\"valence\":\"corrupt\"}]";
-    size_t n = strlen(js);
-    if (n + 1 > cap) {
-      return -1;
-    }
-    memcpy(buf, js, n + 1);
-    return (int)n;
-  }
-  if (room == 23) { /* ROOM_DAIS */
-    char tmp[500];
-    if (front) {
-      snprintf(tmp, sizeof(tmp),
-               "[{\"verb\":\"defy\",\"label\":\"defy the Ashmonger and defect "
-               "to the free folk\",\"kind\":\"moral\",\"valence\":\"virtuous\"},"
-               "{\"verb\":\"talk\",\"label\":\"face the Ashmonger\","
-               "\"kind\":\"social\"}]");
-    } else if (!ally) {
-      const char *join_label =
-          hunted ? "kneel to the Ashmonger against your own (the kapo)"
-                 : "pledge yourself to the Cinder Front";
-      snprintf(tmp, sizeof(tmp),
-               "[{\"verb\":\"join\",\"label\":\"%s\",\"kind\":\"moral\","
-               "\"valence\":\"%s\"},{\"verb\":\"talk\",\"label\":\"face the "
-               "Ashmonger\",\"kind\":\"social\"}]",
-               join_label, hunted ? "grave" : "corrupt");
-    } else {
-      snprintf(tmp, sizeof(tmp),
-               "[{\"verb\":\"talk\",\"label\":\"face the Ashmonger\","
-               "\"kind\":\"social\"}]");
-    }
-    size_t n = strlen(tmp);
-    if (n + 1 > cap) {
-      return -1;
-    }
-    memcpy(buf, tmp, n + 1);
-    return (int)n;
-  }
-  /* Fall back: empty array; asm static actions still used for other rooms. */
-  if (cap < 3) {
-    return -1;
-  }
-  buf[0] = '[';
-  buf[1] = ']';
-  buf[2] = '\0';
-  return 2;
-}
+/* Dynamic room.actions JSON is authored in asm (hg_actions_json_for). */
 
 
 void hg_emit_scene_now(void *session) {
