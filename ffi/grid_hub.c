@@ -3,11 +3,11 @@
  * asm/grid_local.asm. See include/hg_grid.h and docs/ARCHITECTURE.md.
  */
 #include "hg_grid.h"
+#include "hg_format.h"
 #include "hg_session.h"
 
 #include <cjson/cJSON.h>
 #include <curl/curl.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -90,36 +90,6 @@ static void safe_copy(char *dst, size_t cap, const char *src) {
   snprintf(dst, cap, "%s", src);
 }
 #pragma GCC diagnostic pop
-
-/* Escapes '"', '\\', and control characters for safe embedding in our own
- * generated JSON. Truncates rather than overflowing. */
-static void json_escape(char *out, size_t cap, const char *in) {
-  if (cap == 0) {
-    return;
-  }
-  if (in == NULL) {
-    in = "";
-  }
-  size_t w = 0;
-  for (; *in != '\0' && w + 2 < cap; ++in) {
-    unsigned char c = (unsigned char)*in;
-    if (c == '"' || c == '\\') {
-      out[w++] = '\\';
-      out[w++] = (char)c;
-    } else if (c == '\n') {
-      out[w++] = '\\';
-      out[w++] = 'n';
-    } else if (c == '\r') {
-      out[w++] = '\\';
-      out[w++] = 'r';
-    } else if (c < 0x20) {
-      /* drop other control bytes */
-    } else {
-      out[w++] = (char)c;
-    }
-  }
-  out[w] = '\0';
-}
 
 /* ---------- RemoteHub transport ---------- */
 
@@ -537,188 +507,176 @@ int hg_grid_fetch_character(const char *name, hg_grid_character_row *out) {
   return 0;
 }
 
-/* ---------- fmt: worlds / travel ---------- */
+/* ---------- fetch: listen / ping (policy in asm/grid_policy.asm) ---------- */
 
-static int append(char *buf, size_t cap, size_t *off, const char *fmt, ...) {
-  if (*off >= cap) {
+int hg_grid_fetch_recent(int limit, hg_grid_federation_trace *out, size_t cap,
+                         size_t *out_count) {
+  if (out_count != NULL) {
+    *out_count = 0;
+  }
+  if (out == NULL || cap == 0 || !g.remote) {
+    return 0;
+  }
+  cJSON *params = cJSON_CreateArray();
+  cJSON_AddItemToArray(params, cJSON_CreateNumber(limit));
+  cJSON *result = NULL;
+  if (rpc_call("recent", params, &result) != 0 || !cJSON_IsArray(result)) {
+    cJSON_Delete(result);
     return -1;
   }
-  va_list ap;
-  va_start(ap, fmt);
-  int n = vsnprintf(buf + *off, cap - *off, fmt, ap);
-  va_end(ap);
-  if (n < 0 || (size_t)n >= cap - *off) {
+  size_t n = 0;
+  const cJSON *row = NULL;
+  cJSON_ArrayForEach(row, result) {
+    if (n >= cap) {
+      break;
+    }
+    if (!cJSON_IsObject(row)) {
+      continue;
+    }
+    safe_copy(out[n].world, sizeof(out[n].world), json_str(row, "world"));
+    safe_copy(out[n].node, sizeof(out[n].node), json_str(row, "node"));
+    safe_copy(out[n].kind, sizeof(out[n].kind), json_str(row, "kind"));
+    safe_copy(out[n].text, sizeof(out[n].text), json_str(row, "text"));
+    out[n].at = json_ll(row, "at");
+    n++;
+  }
+  cJSON_Delete(result);
+  if (out_count != NULL) {
+    *out_count = n;
+  }
+  return (int)n;
+}
+
+int hg_grid_fetch_recent_across(int limit, hg_grid_federation_trace *out,
+                                size_t cap, size_t *out_count) {
+  if (out_count != NULL) {
+    *out_count = 0;
+  }
+  if (out == NULL || cap == 0) {
     return -1;
   }
-  *off += (size_t)n;
+  if (!g.remote) {
+    return 0;
+  }
+  cJSON *params = cJSON_CreateArray();
+  cJSON_AddItemToArray(params, cJSON_CreateString(g.world_name));
+  cJSON_AddItemToArray(params, cJSON_CreateNumber(limit));
+  cJSON *result = NULL;
+  if (rpc_call("recentAcross", params, &result) != 0 ||
+      !cJSON_IsArray(result)) {
+    cJSON_Delete(result);
+    return -1;
+  }
+  size_t n = 0;
+  const cJSON *row = NULL;
+  cJSON_ArrayForEach(row, result) {
+    if (n >= cap) {
+      break;
+    }
+    if (!cJSON_IsObject(row)) {
+      continue;
+    }
+    safe_copy(out[n].world, sizeof(out[n].world), json_str(row, "world"));
+    safe_copy(out[n].node, sizeof(out[n].node), json_str(row, "node"));
+    safe_copy(out[n].kind, sizeof(out[n].kind), json_str(row, "kind"));
+    safe_copy(out[n].text, sizeof(out[n].text), json_str(row, "text"));
+    out[n].at = json_ll(row, "at");
+    n++;
+  }
+  cJSON_Delete(result);
+  if (out_count != NULL) {
+    *out_count = n;
+  }
+  return (int)n;
+}
+
+int hg_grid_local_trace_at(int index, hg_grid_federation_trace *out) {
+  if (out == NULL) {
+    return -1;
+  }
+  const char *world = NULL;
+  const char *node = NULL;
+  const char *kind = NULL;
+  const char *text = NULL;
+  long long at = 0;
+  if (hg_grid_local_trace_ptrs(index, &world, &node, &kind, &text, &at) != 0) {
+    return -1;
+  }
+  safe_copy(out->world, sizeof(out->world), world);
+  safe_copy(out->node, sizeof(out->node), node);
+  safe_copy(out->kind, sizeof(out->kind), kind);
+  safe_copy(out->text, sizeof(out->text), text);
+  out->at = at;
   return 0;
 }
 
-int hg_grid_fmt_worlds(char *buf, size_t cap) {
-  hg_grid_world_row rows[HG_GRID_MAX_WORLDS];
-  int n = hg_grid_list_worlds(rows, HG_GRID_MAX_WORLDS, NULL);
-  size_t off = 0;
-  if (n < 0) {
-    if (append(buf, cap, &off,
-              "The Grid is silent; the registry is out of reach.\r\n") != 0) {
-      return -1;
-    }
-    return (int)off;
+static void identity_apply_merged(void *session, const hg_grid_character_row *hub) {
+  char faction[16];
+  char title[48];
+  safe_copy(faction, sizeof(faction), hg_s_str(session, HG_SESSION_FACTION));
+  if (strcmp(faction, "ally") != 0 && strcmp(faction, "front") != 0) {
+    safe_copy(faction, sizeof(faction), hub->faction);
   }
-  if (append(buf, cap, &off,
-            "Worlds linked on the Grid (say 'travel <world>'):\r\n") != 0) {
-    return -1;
+  safe_copy(title, sizeof(title), hg_s_str(session, HG_SESSION_TITLE));
+  if (title[0] == '\0') {
+    safe_copy(title, sizeof(title), hub->title);
   }
-  long long now = now_ms();
-  char json[1024];
-  size_t joff = 0;
-  json[0] = '\0';
-  if (append(json, sizeof(json), &joff, "[") != 0) {
-    return -1;
-  }
-  for (int i = 0; i < n; ++i) {
-    int reachable = rows[i].last_seen > 0;
-    int active = rows[i].last_seen > now - 60000;
-    int here = strcmp(rows[i].id, g.world_name) == 0;
-    const char *tag = "seeded (not yet live)";
-    if (here) {
-      tag = "you are here";
-    } else if (reachable && active) {
-      tag = "reachable, active now";
-    } else if (reachable) {
-      tag = "reachable, quiet";
-    }
-    if (append(buf, cap, &off, "  %s  [%s]\r\n", rows[i].id, tag) != 0) {
-      return -1;
-    }
-    char idesc[64];
-    json_escape(idesc, sizeof(idesc), rows[i].id);
-    if (append(json, sizeof(json), &joff,
-              "%s{\"id\":\"%s\",\"reachable\":%s,\"active\":%s,"
-              "\"lastSeen\":%lld,\"here\":%s}",
-              i == 0 ? "" : ",", idesc, reachable ? "true" : "false",
-              active ? "true" : "false", rows[i].last_seen,
-              here ? "true" : "false") != 0) {
-      return -1;
-    }
-  }
-  if (append(json, sizeof(json), &joff, "]") != 0) {
-    return -1;
-  }
-  if (append(buf, cap, &off, "@event grid.worlds {\"worlds\":%s}\r\n",
-            json) != 0) {
-    return -1;
-  }
-  return (int)off;
+  hg_s_set_i64(session, HG_SESSION_LEVEL, hub->level);
+  hg_s_set_i64(session, HG_SESSION_XP, hub->xp);
+  hg_s_set_i64(session, HG_SESSION_GOLD, hub->gold);
+  hg_s_set_i64(session, HG_SESSION_MORALITY, hub->morality);
+  hg_s_set_i64(session, HG_SESSION_ASHSWORN, hub->ashsworn);
+  safe_copy(hg_s_str_mut(session, HG_SESSION_FACTION), 16, faction);
+  safe_copy(hg_s_str_mut(session, HG_SESSION_TITLE), 48, title);
+  safe_copy(hg_s_str_mut(session, HG_SESSION_RACE), 16, hub->race);
 }
 
-/* ---------- fmt: listen / ping ---------- */
-
-int hg_grid_fmt_listen(char *buf, size_t cap) {
-  size_t off = 0;
-  int echo_n = hg_grid_local_echo_count();
-  if (echo_n > 0) {
-    const char *node = NULL;
-    const char *kind = NULL;
-    const char *etext = NULL;
-    long long at = 0;
-    int idx = rand() % echo_n;
-    if (hg_grid_local_echo_ptrs(idx, &node, &kind, &etext, &at) != 0) {
-      etext = "";
-    }
-    (void)node;
-    (void)kind;
-    char esc[220];
-    json_escape(esc, sizeof(esc), etext);
-    if (append(buf, cap, &off,
-              "You go still and tune the dead frequencies. The static "
-              "thins, and the network plays something back -- a memory it "
-              "never let go of:\r\n  >> %s <<\r\n"
-              "@event grid.transmission {\"kind\":\"echo\",\"text\":\"%s\"}\r\n",
-              etext, esc) != 0) {
-      return -1;
-    }
-    return (int)off;
+int hg_grid_load_session(void *session) {
+  if (!g.remote || session == NULL) {
+    return 0;
   }
-  char world[48] = {0};
-  char node[64] = {0};
-  char kind[24] = {0};
-  char ttext[200] = {0};
-  long long at = 0;
-  int have = 0;
-  if (g.remote) {
-    cJSON *params = cJSON_CreateArray();
-    cJSON_AddItemToArray(params, cJSON_CreateNumber(20));
-    cJSON *result = NULL;
-    if (rpc_call("recent", params, &result) == 0 && cJSON_IsArray(result)) {
-      int count = cJSON_GetArraySize(result);
-      const cJSON *row =
-          count > 0 ? cJSON_GetArrayItem(result, rand() % count) : NULL;
-      if (cJSON_IsObject(row)) {
-        safe_copy(world, sizeof(world), json_str(row, "world"));
-        safe_copy(node, sizeof(node), json_str(row, "node"));
-        safe_copy(kind, sizeof(kind), json_str(row, "kind"));
-        safe_copy(ttext, sizeof(ttext), json_str(row, "text"));
-        at = json_ll(row, "at");
-        if (ttext[0] != '\0') {
-          have = 1;
-        }
-      }
-    }
-    cJSON_Delete(result);
-  } else if (hg_grid_local_trace_count() > 0) {
-    const char *w = NULL;
-    const char *n = NULL;
-    const char *k = NULL;
-    const char *t = NULL;
-    int idx = rand() % hg_grid_local_trace_count();
-    if (hg_grid_local_trace_ptrs(idx, &w, &n, &k, &t, &at) == 0) {
-      safe_copy(world, sizeof(world), w);
-      safe_copy(node, sizeof(node), n);
-      safe_copy(kind, sizeof(kind), k);
-      safe_copy(ttext, sizeof(ttext), t);
-      have = 1;
-    }
+  const char *name = hg_s_str(session, HG_SESSION_NAME);
+  if (name == NULL || name[0] == '\0') {
+    return 0;
   }
-  (void)node;
-  (void)kind;
-  (void)at;
-  if (have) {
-    char esc[220];
-    json_escape(esc, sizeof(esc), ttext);
-    if (append(buf, cap, &off,
-              "You go still and tune the dead frequencies. The static "
-              "thins, and the network plays something back -- a memory it "
-              "never let go of:\r\n  >> %s <<\r\n",
-              ttext) != 0) {
-      return -1;
-    }
-    if (strcmp(world, g.world_name) != 0 && world[0] != '\0') {
-      if (append(buf, cap, &off,
-                "  (...the signal carries from somewhere called %s)\r\n",
-                world) != 0) {
-        return -1;
-      }
-    }
-    if (append(buf, cap, &off,
-              "@event grid.transmission {\"kind\":\"echo\",\"text\":\"%s\"}\r\n",
-              esc) != 0) {
-      return -1;
-    }
-    return (int)off;
-  }
-  if (append(buf, cap, &off,
-            "You go still and tune the dead frequencies. Only static "
-            "answers; the deep memory here is empty.\r\n"
-            "@event grid.transmission {\"kind\":\"empty\",\"text\":\"\"}\r\n") !=
-      0) {
+  hg_grid_character_row hub = {0};
+  if (hg_grid_fetch_character(name, &hub) != 0) {
     return -1;
   }
-  return (int)off;
+  if (hub.race[0] == '\0') {
+    return 0;
+  }
+  identity_apply_merged(session, &hub);
+  return 1;
 }
 
-int hg_grid_fmt_ping_echo(char *buf, size_t cap, const char *room_id) {
-  size_t off = 0;
+/* Collect foreign federation traces for ping all, then format. Collection policy
+ * (skip self world in LocalHub, recentAcross in RemoteHub) lives here; asm
+ * grid_policy.asm chooses when to call this for the ping-all branch. */
+int hg_grid_assemble_ping_all(char *buf, size_t cap) {
+  hg_grid_federation_trace traces[8];
+  int n = 0;
+  if (!g.remote) {
+    int tc = hg_grid_local_trace_count();
+    for (int i = 0; i < tc && n < 8; ++i) {
+      if (hg_grid_local_trace_at(i, &traces[n]) != 0) {
+        continue;
+      }
+      if (traces[n].world[0] != '\0' &&
+          strcmp(traces[n].world, g.world_name) != 0) {
+        n++;
+      }
+    }
+  } else {
+    size_t count = 0;
+    if (hg_grid_fetch_recent_across(8, traces, 8, &count) >= 0) {
+      n = (int)(count > 8 ? 8 : count);
+    }
+  }
+  return hg_fmt_grid_ping_all(buf, cap, traces, n);
+}
+
+int hg_grid_assemble_ping_echo(char *buf, size_t cap, const char *room_id) {
   const char *texts[6];
   const char *kinds[6];
   long long ats[6];
@@ -739,152 +697,51 @@ int hg_grid_fmt_ping_echo(char *buf, size_t cap, const char *room_id) {
       n++;
     }
   }
-  char json[1536];
-  size_t joff = 0;
-  json[0] = '\0';
-  if (append(json, sizeof(json), &joff, "[") != 0) {
-    return -1;
-  }
-  if (n == 0) {
-    if (append(buf, cap, &off,
-              "You key into the dead Grid. Static, a cold hum... but this "
-              "node remembers nothing. Not yet. (try 'ping all')\r\n") != 0) {
-      return -1;
-    }
-  } else {
-    if (append(buf, cap, &off,
-              "You key into the dead Grid. Static, then it remembers:\r\n") !=
-        0) {
-      return -1;
-    }
-    for (int i = 0; i < n; ++i) {
-      if (append(buf, cap, &off, "  - %s\r\n", texts[i]) != 0) {
-        return -1;
-      }
-      char esc[220];
-      json_escape(esc, sizeof(esc), texts[i]);
-      char kesc[32];
-      json_escape(kesc, sizeof(kesc), kinds[i] != NULL ? kinds[i] : "");
-      if (append(json, sizeof(json), &joff,
-                "%s{\"kind\":\"%s\",\"text\":\"%s\",\"at\":%lld}",
-                i == 0 ? "" : ",", kesc, esc, ats[i]) != 0) {
-        return -1;
-      }
-    }
-    if (append(buf, cap, &off,
-              "  (say 'ping all' to hear the whole network)\r\n") != 0) {
-      return -1;
-    }
-  }
-  if (append(json, sizeof(json), &joff, "]") != 0) {
-    return -1;
-  }
-  char resc[80];
-  json_escape(resc, sizeof(resc), room_id);
-  if (append(buf, cap, &off, "@event grid.echo {\"node\":\"%s\",\"traces\":%s}\r\n",
-            resc, json) != 0) {
-    return -1;
-  }
-  return (int)off;
+  return hg_fmt_grid_ping_echo(buf, cap, room_id, texts, kinds, ats, n);
 }
 
-int hg_grid_fmt_ping_all(char *buf, size_t cap) {
-  size_t off = 0;
-  char worlds[8][48];
-  char nodes[8][64];
-  char kinds[8][24];
-  char texts[8][200];
-  long long ats[8];
-  int n = 0;
-  if (!g.remote) {
-    int tc = hg_grid_local_trace_count();
-    for (int i = 0; i < tc && n < 8; ++i) {
-      const char *w = NULL;
-      const char *node = NULL;
-      const char *kind = NULL;
-      const char *t = NULL;
-      long long at = 0;
-      if (hg_grid_local_trace_ptrs(i, &w, &node, &kind, &t, &at) != 0) {
-        continue;
-      }
-      if (w != NULL && strcmp(w, g.world_name) != 0) {
-        safe_copy(worlds[n], sizeof(worlds[n]), w);
-        safe_copy(nodes[n], sizeof(nodes[n]), node);
-        safe_copy(kinds[n], sizeof(kinds[n]), kind);
-        safe_copy(texts[n], sizeof(texts[n]), t);
-        ats[n] = at;
-        n++;
-      }
-    }
-  } else {
-    cJSON *result = NULL;
-    cJSON *params = cJSON_CreateArray();
-    cJSON_AddItemToArray(params, cJSON_CreateString(g.world_name));
-    cJSON_AddItemToArray(params, cJSON_CreateNumber(8));
-    if (rpc_call("recentAcross", params, &result) == 0 &&
-        cJSON_IsArray(result)) {
-      const cJSON *row = NULL;
-      cJSON_ArrayForEach(row, result) {
-        if (n >= 8) {
-          break;
-        }
-        safe_copy(worlds[n], sizeof(worlds[n]), json_str(row, "world"));
-        safe_copy(nodes[n], sizeof(nodes[n]), json_str(row, "node"));
-        safe_copy(kinds[n], sizeof(kinds[n]), json_str(row, "kind"));
-        safe_copy(texts[n], sizeof(texts[n]), json_str(row, "text"));
-        ats[n] = json_ll(row, "at");
-        n++;
-      }
-    }
-    cJSON_Delete(result);
-  }
-  if (n == 0) {
-    if (append(buf, cap, &off,
-              "The deep Grid hums, vast and empty. Nothing echoes back from "
-              "the other nodes -- yet.\r\n"
-              "@event grid.federation {\"traces\":[]}\r\n") != 0) {
-      return -1;
-    }
-    return (int)off;
-  }
-  if (append(buf, cap, &off,
-            "You key past your own node, into the whole dead network. It "
-            "remembers, from across the Grid:\r\n") != 0) {
+/* Listen row materialization + format (source selection stays in asm). */
+int hg_grid_listen_echo_at(char *buf, size_t cap, int index) {
+  const char *node = NULL;
+  const char *kind = NULL;
+  const char *text = NULL;
+  long long at = 0;
+  if (hg_grid_local_echo_ptrs(index, &node, &kind, &text, &at) != 0) {
     return -1;
   }
-  char json[2048];
-  size_t joff = 0;
-  json[0] = '\0';
-  if (append(json, sizeof(json), &joff, "[") != 0) {
+  (void)node;
+  (void)kind;
+  (void)at;
+  return hg_fmt_grid_listen_echo(buf, cap, text);
+}
+
+int hg_grid_listen_local_trace_at(char *buf, size_t cap, int index) {
+  hg_grid_federation_trace row = {0};
+  if (hg_grid_local_trace_at(index, &row) != 0 || row.text[0] == '\0') {
     return -1;
   }
-  for (int i = 0; i < n; ++i) {
-    if (append(buf, cap, &off, "  - [%s] %s\r\n", worlds[i], texts[i]) != 0) {
-      return -1;
-    }
-    char wesc[64];
-    char nesc[80];
-    char kesc[32];
-    char tesc[220];
-    json_escape(wesc, sizeof(wesc), worlds[i]);
-    json_escape(nesc, sizeof(nesc), nodes[i]);
-    json_escape(kesc, sizeof(kesc), kinds[i]);
-    json_escape(tesc, sizeof(tesc), texts[i]);
-    if (append(json, sizeof(json), &joff,
-              "%s{\"world\":\"%s\",\"node\":\"%s\",\"kind\":\"%s\","
-              "\"text\":\"%s\",\"at\":%lld}",
-              i == 0 ? "" : ",", wesc, nesc, kesc, tesc, ats[i]) != 0) {
-      return -1;
-    }
-  }
-  if (append(json, sizeof(json), &joff, "]") != 0) {
+  return hg_fmt_grid_listen_trace(buf, cap, row.text, row.world,
+                                  hg_grid_world_name());
+}
+
+int hg_grid_listen_remote_recent_count(void) {
+  hg_grid_federation_trace rows[20];
+  size_t count = 0;
+  if (hg_grid_fetch_recent(20, rows, 20, &count) < 0) {
     return -1;
   }
-  if (append(buf, cap, &off, "@event grid.federation {\"traces\":%s}\r\n",
-            json) != 0) {
+  return (int)count;
+}
+
+int hg_grid_listen_remote_recent_at(char *buf, size_t cap, int index) {
+  hg_grid_federation_trace rows[20];
+  size_t count = 0;
+  if (hg_grid_fetch_recent(20, rows, 20, &count) < 0 || index < 0 ||
+      index >= (int)count) {
     return -1;
   }
-  return (int)off;
+  return hg_fmt_grid_listen_trace(buf, cap, rows[index].text, rows[index].world,
+                                  hg_grid_world_name());
 }
 
 /* ---------- remaining RPC surface (tide, gridcast, ledger, presence) ---------- */
@@ -1028,47 +885,6 @@ int hg_grid_commit_character(const char *name,
   cJSON_AddBoolToObject(obj, "ashsworn", ctx->ashsworn != 0);
   cJSON_AddItemToArray(params, obj);
   return rpc_call("commitCharacter", params, NULL);
-}
-
-int hg_grid_load_session(void *session) {
-  if (!g.remote || session == NULL) {
-    return 0;
-  }
-  const char *name = hg_s_str(session, HG_SESSION_NAME);
-  if (name == NULL || name[0] == '\0') {
-    return 0;
-  }
-  cJSON *params = cJSON_CreateArray();
-  cJSON_AddItemToArray(params, cJSON_CreateString(name));
-  cJSON *result = NULL;
-  if (rpc_call("loadCharacter", params, &result) != 0) {
-    return -1;
-  }
-  if (!cJSON_IsObject(result)) {
-    cJSON_Delete(result);
-    return -1;
-  }
-  const char *race = json_str(result, "race");
-  if (race[0] == '\0') {
-    cJSON_Delete(result);
-    return 0;
-  }
-  hg_s_set_i64(session, HG_SESSION_LEVEL, json_num(result, "level", 1));
-  hg_s_set_i64(session, HG_SESSION_XP, json_num(result, "xp", 0));
-  hg_s_set_i64(session, HG_SESSION_GOLD, json_num(result, "gold", 20));
-  hg_s_set_i64(session, HG_SESSION_MORALITY,
-               json_num(result, "morality", 0));
-  const cJSON *ashsworn =
-      cJSON_GetObjectItemCaseSensitive(result, "ashsworn");
-  hg_s_set_i64(session, HG_SESSION_ASHSWORN,
-               cJSON_IsTrue(ashsworn) ? 1 : 0);
-  safe_copy(hg_s_str_mut(session, HG_SESSION_FACTION), 16,
-            json_str(result, "faction"));
-  safe_copy(hg_s_str_mut(session, HG_SESSION_TITLE), 48,
-            json_str(result, "title"));
-  safe_copy(hg_s_str_mut(session, HG_SESSION_RACE), 16, race);
-  cJSON_Delete(result);
-  return 1;
 }
 
 int hg_grid_commit_session(void *session) {

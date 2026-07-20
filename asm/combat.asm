@@ -212,8 +212,6 @@ extern hg_wake_service
 extern hg_session_flush
 extern hg_grid_on_kill
 extern hg_grid_on_death
-extern hg_grid_fmt_listen
-extern hg_grid_fmt_ping_echo
 extern hg_grid_inscribe
 extern hg_join_record_oath
 extern hg_grid_shift_tide
@@ -221,8 +219,6 @@ extern hg_dais_pledge
 extern hg_moral_arc_now
 extern hg_announce_cache_now
 extern hg_inv_add_item
-extern hg_grid_fmt_ping_all
-extern hg_grid_fmt_worlds
 extern memcpy
 extern memset
 global hg_world_boot
@@ -1325,82 +1321,6 @@ hg_cmd_defend:
     mov ecx, no_stand_len
     call queue_bytes
     add rsp, 8
-    ret
-
-; ping (rdx=NULL): this room's local echo, via the grid hub's node-local
-; memory (always available, remote or local mode).
-; ping all (rdx="all"): recentAcross the whole federation.
-hg_cmd_ping:
-    call setup_cmd
-    push r14
-    mov r14, rdx
-    sub rsp, 3072
-    test r14, r14
-    jz .room
-    mov rdi, r14
-    lea rsi, [rel arg_all]
-    call strcasecmp wrt ..plt
-    test eax, eax
-    jnz .room
-    mov rdi, rsp
-    mov esi, 3072
-    call hg_grid_fmt_ping_all wrt ..plt
-    jmp .emit
-.room:
-    mov rdi, [r12 + SESSION_ROOM]
-    call hg_room_id
-    mov rdx, rax
-    mov rdi, rsp
-    mov esi, 3072
-    call hg_grid_fmt_ping_echo wrt ..plt
-.emit:
-    cmp eax, 0
-    jl .done
-    mov rdi, r12
-    mov rsi, r13
-    mov rdx, rsp
-    mov ecx, eax
-    call queue_bytes
-.done:
-    add rsp, 3072
-    pop r14
-    ret
-
-; listen / tune: a random cross-world echo (recentAcross-flavored prose).
-hg_cmd_listen:
-    call setup_cmd
-    sub rsp, 1032          ; +8 keeps rsp 16-aligned before the C call below
-    mov rdi, rsp
-    mov esi, 1024
-    call hg_grid_fmt_listen wrt ..plt
-    cmp eax, 0
-    jl .done
-    mov rdi, r12
-    mov rsi, r13
-    mov rdx, rsp
-    mov ecx, eax
-    call queue_bytes
-.done:
-    add rsp, 1032
-    ret
-
-; worlds: listWorlds reachability tags still formatted in C for now.
-global hg_cmd_worlds
-hg_cmd_worlds:
-    call setup_cmd
-    sub rsp, 3080
-    mov rdi, rsp
-    mov esi, 3072
-    call hg_grid_fmt_worlds wrt ..plt
-    cmp eax, 0
-    jl .worlds_done
-    mov rdi, r12
-    mov rsi, r13
-    mov rdx, rsp
-    mov ecx, eax
-    call queue_bytes
-.worlds_done:
-    add rsp, 3080
     ret
 
 hg_cmd_world:
