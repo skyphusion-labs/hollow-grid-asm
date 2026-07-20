@@ -106,6 +106,30 @@ Verified on rancid linux/amd64 (Docker ubuntu:24.04): `make check` green;
 full upstream smoke `2558d00f` -> **153 ok / 0 FAIL / 1 SKIP**
 (Phase 12 Dustfall unreachable, expected SKIP), exit 0.
 
+### Evidence (social rules port to asm, #17)
+
+**Closed 2026-07-19** on `feat/port-social-to-asm` (merge closes #17):
+
+- `ffi/social.c` deleted. Social/economy/comms/moral handlers live in
+  `asm/social.asm`, `asm/social_port2.asm`, `asm/social_port3.asm`.
+- `forgive` / `witness` rule bodies (marked check, ledgers, morality, deeds,
+  redemption title, kept vigil) are asm. Admin gate for `gridstats` /
+  `gridprune` is asm.
+- C remaining: `lws_shim.c` (libwebsockets), `grid_hub.c` (HTTP/JSON hub),
+  `format.c` (JSON/prose emitters, hub-row presentation for saved/fallen
+  roll/stats/prune, forgiven target/redeemed event text). No command rule
+  decisions in those helpers.
+
+**Verify (rancid, Docker ubuntu:24.04):** `docker build --platform linux/amd64`
+runs `make check` green (foundation, gameplay, federation,
+`ws_remote_federation`). Upstream `smoke.mjs` @ `2558d00f` confirms the ported
+`forgive` rule body (kapo/ash-sworn: grace lands, brand permanent, never
+redeemed) exactly against protocol assertions. `witness`, `saved`,
+`gridstats`, and `gridprune` were verified directly against the built binary:
+correct `@event` (`grid.fallen`, `grid.rescued_roll`, `grid.ledger_stats`,
+`grid.ledger_pruned`) and prose, and the `gridstats`/`gridprune` admin gate
+(asm `hg_is_admin`) refuses a non-keeper with no ledger data leaked.
+
 ## Phase 3: federation
 
 - [x] Add a best-effort Grid Hub client behind a replaceable boundary

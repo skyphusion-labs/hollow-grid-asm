@@ -2,6 +2,7 @@
 
 #include "hg_format.h"
 
+#include "hg_grid.h"
 #include "hg_session.h"
 
 #include <stdio.h>
@@ -26,7 +27,10 @@ extern const char *hg_room_actions(int64_t room);
 extern const char *hg_room_live_mobs(int64_t room);
 extern int64_t hg_world_tick_value(void);
 extern void hg_announce_cache_now(void *session);
+extern void hg_store_save(void *session);
 
+extern void *find_player_prefix(int64_t room, const char *prefix,
+                                const char *except);
 
 static char g_scratch[4096];
 static char *g_admins[16];
@@ -727,4 +731,475 @@ void hg_emit_scene_now(void *session) {
   int64_t tick = hg_world_tick_value();
   hg_emit_world_now(session, tick, "day");
   hg_announce_cache_now(session);
+}
+
+/* --- social port wave 2: format-only emitters (rules live in asm) --- */
+
+extern const char *hg_regard_of(const void *session);
+extern int hg_deed_count_str(const char *player, const char *kind);
+
+void hg_emit_room_actions_now(void *session) {
+  char acts[1200];
+  char evt[1400];
+  int n = hg_actions_json_for(session, acts, sizeof(acts));
+  const char *json = acts;
+  if (n < 3) {
+    json = hg_room_actions(hg_s_i64(session, HG_SESSION_ROOM));
+    if (json == NULL || json[0] == '\0') {
+      json = "[]";
+    }
+  }
+  if (hg_fmt_room_actions(evt, sizeof(evt), json) < 0) {
+    return;
+  }
+  hg_queue_cstr(session, evt);
+}
+
+void hg_emit_grid_who_now(void *session) {
+  char json[2048];
+  size_t o = 0;
+  json[o++] = '[';
+  int first = 1;
+  const char *world = "Basalt Relay";
+  for (int i = 0; i < HG_MAX_SESSIONS; i++) {
+    void *s = hg_session_at(i);
+    if (s == NULL) {
+      continue;
+    }
+    const char *name = hg_s_str(s, HG_SESSION_NAME);
+    if (name == NULL || name[0] == '\0') {
+      continue;
+    }
+    const char *title = hg_s_str(s, HG_SESSION_TITLE);
+    const char *regard = hg_regard_of(s);
+    char nesc[80], tesc[80], resc[40], wesc[40];
+    if (hg_json_escape(nesc, sizeof(nesc), name) < 0 ||
+        hg_json_escape(tesc, sizeof(tesc), title ? title : "") < 0 ||
+        hg_json_escape(resc, sizeof(resc), regard) < 0 ||
+        hg_json_escape(wesc, sizeof(wesc), world) < 0) {
+      continue;
+    }
+    int w = snprintf(json + o, sizeof(json) - o,
+                     "%s{\"world\":\"%s\",\"name\":\"%s\",\"regard\":\"%s\","
+                     "\"here\":true,\"title\":\"%s\"}",
+                     first ? "" : ",", wesc, nesc, resc, tesc);
+    if (w < 0 || (size_t)w >= sizeof(json) - o) {
+      break;
+    }
+    o += (size_t)w;
+    first = 0;
+  }
+  hg_grid_presence_row remote[32];
+  size_t remote_n = 0;
+  if (hg_grid_presence(30000, remote, 32, &remote_n) == 0) {
+    for (size_t i = 0; i < remote_n; i++) {
+      if (remote[i].name[0] == '\0' ||
+          strcmp(remote[i].world, world) == 0) {
+        continue;
+      }
+      char nesc[80], tesc[80], resc[80], wesc[80];
+      if (hg_json_escape(nesc, sizeof(nesc), remote[i].name) < 0 ||
+          hg_json_escape(tesc, sizeof(tesc), remote[i].title) < 0 ||
+          hg_json_escape(resc, sizeof(resc), remote[i].regard) < 0 ||
+          hg_json_escape(wesc, sizeof(wesc), remote[i].world) < 0) {
+        continue;
+      }
+      int w = snprintf(json + o, sizeof(json) - o,
+                       "%s{\"world\":\"%s\",\"name\":\"%s\","
+                       "\"regard\":\"%s\",\"here\":false,\"title\":\"%s\"}",
+                       first ? "" : ",", wesc, nesc, resc, tesc);
+      if (w < 0 || (size_t)w >= sizeof(json) - o) {
+        break;
+      }
+      o += (size_t)w;
+      first = 0;
+    }
+  }
+  if (o + 2 < sizeof(json)) {
+    json[o++] = ']';
+    json[o] = '\0';
+  } else {
+    snprintf(json, sizeof(json), "[]");
+  }
+  char evt[2200];
+  snprintf(evt, sizeof(evt), "@event grid.who {\"players\":%s}\r\n", json);
+  hg_queue_cstr(session, evt);
+  if (first) {
+    hg_queue_line(session, "No one else walks the wastes right now.");
+  } else {
+    hg_queue_line(session, "Online: survivors walk the wastes.");
+  }
+}
+
+void hg_emit_char_reckoning_now(void *session) {
+  const char *faction = hg_s_str(session, HG_SESSION_FACTION);
+  const char *standing = "unaligned";
+  if (faction != NULL && strcmp(faction, "front") == 0) {
+    standing = "Cinder Front";
+  } else if (faction != NULL && strcmp(faction, "ally") == 0) {
+    standing = "Free Folk ally";
+  }
+  long long mor = hg_s_i64(session, HG_SESSION_MORALITY);
+  int ash = hg_s_i64(session, HG_SESSION_ASHSWORN) ? 1 : 0;
+  int strayed = hg_s_i64(session, HG_SESSION_STRAYED) ? 1 : 0;
+  int redeemed = hg_s_i64(session, HG_SESSION_REDEEMED) ? 1 : 0;
+  const char *self = hg_s_str(session, HG_SESSION_NAME);
+
+  hg_queue_line(session, "The Grid has kept count. This is the sum of you so far:");
+  char stand_line[160];
+  if (ash) {
+    snprintf(stand_line, sizeof(stand_line),
+             "  standing: %s   (morality %lld)   ASH-SWORN", standing,
+             (long long)mor);
+  } else {
+    snprintf(stand_line, sizeof(stand_line),
+             "  standing: %s   (morality %lld)", standing, (long long)mor);
+  }
+  hg_queue_line(session, stand_line);
+  if (redeemed && !ash) {
+    hg_queue_line(session,
+                  "  the Returned -- you strayed toward the cinders and found "
+                  "your way back.");
+  } else if (redeemed && ash) {
+    hg_queue_line(session,
+                  "  ash-marked, and good anyway -- the brand stays; you keep "
+                  "choosing well regardless.");
+  } else if (strayed) {
+    hg_queue_line(session,
+                  "  strayed -- you have gone a long way toward the cinders. "
+                  "(the way back is not closed)");
+  }
+
+  static const char *kinds[] = {
+      "mended",    "forgave",  "aided",     "kept",     "freed",
+      "sheltered", "stood",    "inscribed", "restored", "slain",
+      "stolen",    "pledged",  "defected"};
+  static const char *labels[] = {
+      "  mended the hurt of others: ",
+      "  souls you chose to forgive: ",
+      "  aid left for strangers you'll never meet: ",
+      "  names of the fallen you kept: ",
+      "  souls you cut out of the cages: ",
+      "  distress calls you answered: ",
+      "  times you stood with the free folk: ",
+      "  words you left for whoever comes next: ",
+      "  dead nodes you brought back: ",
+      "  lives you took: ",
+      "  thefts: ",
+      "  times you swore to the Cinder Front: ",
+      "  times you turned on the Front: "};
+
+  char deeds_json[640];
+  size_t o = 0;
+  deeds_json[o++] = '{';
+  int any = 0;
+  for (size_t k = 0; k < sizeof(kinds) / sizeof(kinds[0]); k++) {
+    int count = hg_deed_count_str(self, kinds[k]);
+    int w = snprintf(deeds_json + o, sizeof(deeds_json) - o, "%s\"%s\":%d",
+                     k ? "," : "", kinds[k], count);
+    if (w > 0) {
+      o += (size_t)w;
+    }
+    if (count > 0) {
+      char line[120];
+      snprintf(line, sizeof(line), "%s%d", labels[k], count);
+      hg_queue_line(session, line);
+      any = 1;
+    }
+  }
+  if (o + 2 > sizeof(deeds_json)) {
+    o = sizeof(deeds_json) - 2;
+  }
+  deeds_json[o++] = '}';
+  deeds_json[o] = '\0';
+  if (!any) {
+    hg_queue_line(session,
+                  "  Nothing yet weighs on either side. The wastes are still "
+                  "waiting to see who you are.");
+  }
+  char fesc[40];
+  hg_json_escape(fesc, sizeof(fesc), faction ? faction : "none");
+  char evt[800];
+  snprintf(evt, sizeof(evt),
+           "@event char.reckoning "
+           "{\"morality\":%lld,\"standing\":\"%s\",\"ashsworn\":%s,"
+           "\"strayed\":%s,\"redeemed\":%s,\"deeds\":%s}\r\n",
+           (long long)mor, fesc, ash ? "true" : "false",
+           strayed ? "true" : "false", redeemed ? "true" : "false",
+           deeds_json);
+  hg_queue_cstr(session, evt);
+}
+
+void hg_emit_comm_gridcast_now(void *session, const char *text) {
+  const char *self = hg_s_str(session, HG_SESSION_NAME);
+  char line[280];
+  snprintf(line, sizeof(line),
+           "You cast your voice into the dead Grid, out across every node: "
+           "\"%s\"",
+           text ? text : "");
+  hg_queue_line(session, line);
+  char fesc[80], tesc[200], wesc[48];
+  hg_json_escape(fesc, sizeof(fesc), self ? self : "");
+  hg_json_escape(tesc, sizeof(tesc), text ? text : "");
+  hg_json_escape(wesc, sizeof(wesc), "Basalt Relay");
+  char evt[400];
+  snprintf(evt, sizeof(evt),
+           "@event comm.gridcast "
+           "{\"world\":\"%s\",\"from\":\"%s\",\"text\":\"%s\"}\r\n",
+           wesc, fesc, tesc);
+  hg_deliver_all(evt, NULL);
+}
+
+void hg_emit_saved_roll_now(void *session) {
+  hg_grid_rescued_row rows[12];
+  size_t n = 0;
+  hg_grid_recent_rescued(12, rows, 12, &n);
+  if (n == 0) {
+    hg_queue_line(session,
+                  "No one has been pulled from the cages yet, or the Grid has "
+                  "forgotten. Find the Front's cages and change that.");
+    return;
+  }
+  hg_queue_line(session, "The Grid keeps these, pulled back out of the cages:");
+  char json[1200];
+  size_t o = 0;
+  json[o++] = '[';
+  for (size_t i = 0; i < n; i++) {
+    char line[160];
+    snprintf(line, sizeof(line), "  - %s, freed by %s", rows[i].name,
+             rows[i].saved_by);
+    hg_queue_line(session, line);
+    char nesc[40], sesc[40], wesc[48];
+    hg_json_escape(nesc, sizeof(nesc), rows[i].name);
+    hg_json_escape(sesc, sizeof(sesc), rows[i].saved_by);
+    hg_json_escape(wesc, sizeof(wesc), rows[i].world);
+    int w = snprintf(json + o, sizeof(json) - o,
+                     "%s{\"world\":\"%s\",\"name\":\"%s\",\"savedBy\":\"%s\","
+                     "\"at\":%lld}",
+                     i ? "," : "", wesc, nesc, sesc, rows[i].at);
+    if (w > 0) {
+      o += (size_t)w;
+    }
+  }
+  json[o++] = ']';
+  json[o] = '\0';
+  char evt[1400];
+  snprintf(evt, sizeof(evt), "@event grid.rescued_roll {\"rescued\":%s}\r\n",
+           json);
+  hg_queue_cstr(session, evt);
+}
+
+static void emit_fallen_roll(void *session, const hg_grid_fallen_row *fallen,
+                             size_t n) {
+  if (n == 0) {
+    hg_queue_line(session,
+                  "The roll is empty for now. No one the Grid remembers has "
+                  "fallen lately; may it stay that way.");
+  } else {
+    hg_queue_line(session,
+                  "The Grid remembers these fallen. Speak a name to keep "
+                  "them:  (witness <name>)");
+    for (size_t j = 0; j < n; j++) {
+      char line[160];
+      snprintf(line, sizeof(line), "  %s  -- fell at %s", fallen[j].name,
+               fallen[j].room);
+      hg_queue_line(session, line);
+    }
+  }
+  char json[1200];
+  size_t o = 0;
+  json[o++] = '[';
+  for (size_t j = 0; j < n; j++) {
+    char nesc[40], wesc[48], resc[40];
+    hg_json_escape(nesc, sizeof(nesc), fallen[j].name);
+    hg_json_escape(wesc, sizeof(wesc), fallen[j].world);
+    hg_json_escape(resc, sizeof(resc), fallen[j].room);
+    int w = snprintf(json + o, sizeof(json) - o,
+                     "%s{\"name\":\"%s\",\"world\":\"%s\",\"room\":\"%s\","
+                     "\"at\":%lld}",
+                     j ? "," : "", nesc, wesc, resc, fallen[j].at);
+    if (w > 0) {
+      o += (size_t)w;
+    }
+  }
+  json[o++] = ']';
+  json[o] = '\0';
+  char evt[1400];
+  snprintf(evt, sizeof(evt), "@event grid.fallen {\"fallen\":%s}\r\n", json);
+  hg_queue_cstr(session, evt);
+}
+
+void hg_emit_fallen_roll_now(void *session) {
+  hg_grid_fallen_row fallen[12];
+  size_t n = 0;
+  if (hg_grid_recent_fallen(12, fallen, 12, &n) != 0) {
+    n = 0;
+  }
+  emit_fallen_roll(session, fallen, n);
+}
+
+void hg_emit_gridstats_cmd_now(void *session) {
+  hg_grid_ledger_row rows[32];
+  size_t n = 0;
+  if (hg_grid_ledger_stats(rows, 32, &n) != 0) {
+    hg_queue_line(session,
+                  "The hub is unreachable; the deep memory cannot be read.");
+    return;
+  }
+  int total = 0;
+  for (size_t i = 0; i < n; i++) {
+    total += rows[i].count;
+  }
+  char kinds_json[800];
+  size_t o = 0;
+  kinds_json[o++] = '[';
+  for (size_t i = 0; i < n; i++) {
+    char kesc[40];
+    hg_json_escape(kesc, sizeof(kesc), rows[i].kind);
+    int w = snprintf(kinds_json + o, sizeof(kinds_json) - o,
+                     "%s{\"kind\":\"%s\",\"count\":%d}", i ? "," : "", kesc,
+                     rows[i].count);
+    if (w > 0) {
+      o += (size_t)w;
+    }
+  }
+  kinds_json[o++] = ']';
+  kinds_json[o] = '\0';
+  char evt[900];
+  snprintf(evt, sizeof(evt),
+           "@event grid.ledger_stats {\"total\":%d,\"kinds\":%s}\r\n", total,
+           kinds_json);
+  hg_queue_cstr(session, evt);
+  char line[160];
+  snprintf(line, sizeof(line), "The Grid ledger holds %d trace(s):", total);
+  hg_queue_line(session, line);
+  for (size_t i = 0; i < n; i++) {
+    snprintf(line, sizeof(line), "  %-10.32s %d", rows[i].kind, rows[i].count);
+    hg_queue_line(session, line);
+  }
+}
+
+void hg_emit_gridprune_cmd_now(void *session) {
+  hg_grid_ledger_row before_rows[32];
+  size_t before_n = 0;
+  if (hg_grid_ledger_stats(before_rows, 32, &before_n) != 0) {
+    hg_queue_line(session,
+                  "The hub is unreachable; the deep memory cannot be tended.");
+    return;
+  }
+  int before = 0;
+  for (size_t i = 0; i < before_n; i++) {
+    before += before_rows[i].count;
+  }
+  int removed = 0;
+  if (hg_grid_prune_ledger(&removed) != 0) {
+    hg_queue_line(session,
+                  "The hub is unreachable; the deep memory cannot be tended.");
+    return;
+  }
+  hg_grid_ledger_row after_rows[32];
+  size_t after_n = 0;
+  if (hg_grid_ledger_stats(after_rows, 32, &after_n) != 0) {
+    after_n = 0;
+  }
+  int after = 0;
+  for (size_t i = 0; i < after_n; i++) {
+    after += after_rows[i].count;
+  }
+  char kinds_json[800];
+  size_t o = 0;
+  kinds_json[o++] = '[';
+  for (size_t i = 0; i < after_n; i++) {
+    char kesc[40];
+    hg_json_escape(kesc, sizeof(kesc), after_rows[i].kind);
+    int w = snprintf(kinds_json + o, sizeof(kinds_json) - o,
+                     "%s{\"kind\":\"%s\",\"count\":%d}", i ? "," : "", kesc,
+                     after_rows[i].count);
+    if (w > 0) {
+      o += (size_t)w;
+    }
+  }
+  kinds_json[o++] = ']';
+  kinds_json[o] = '\0';
+  char evt[960];
+  snprintf(evt, sizeof(evt),
+           "@event grid.ledger_pruned "
+           "{\"removed\":%d,\"before\":%d,\"after\":%d,\"kinds\":%s}\r\n",
+           removed, before, after, kinds_json);
+  hg_queue_cstr(session, evt);
+  char line[160];
+  snprintf(line, sizeof(line),
+           "Pruned %d ambient trace(s) (ghost, passage, recall).", removed);
+  hg_queue_line(session, line);
+  snprintf(line, sizeof(line),
+           "The ledger went from %d to %d trace(s); only meaningful memory "
+           "remains.",
+           before, after);
+  hg_queue_line(session, line);
+}
+
+void hg_emit_forgiven_target_now(void *target, void *forgiver, int ashsworn,
+                                 int redeemed_path) {
+  const char *self = hg_s_str(forgiver, HG_SESSION_NAME);
+  char push[280];
+  snprintf(push, sizeof(push), "%s looks at you and chooses to forgive you.\r\n",
+           self ? self : "");
+  hg_queue_cstr(target, push);
+  if (ashsworn) {
+    hg_queue_cstr(
+        target,
+        "It reaches something in you. But the ash does not lift; it never "
+        "will. You carry the mark and the mercy both. Some things are not "
+        "forgotten, even when they are forgiven.\r\n");
+    char byesc[80];
+    hg_json_escape(byesc, sizeof(byesc), self ? self : "");
+    char evt[240];
+    snprintf(evt, sizeof(evt),
+             "@event char.forgiven "
+             "{\"by\":\"%s\",\"ashsworn\":true,\"redeemed\":false}\r\n",
+             byesc);
+    hg_queue_cstr(target, evt);
+    return;
+  }
+  if (redeemed_path) {
+    return;
+  }
+  char byesc[80];
+  hg_json_escape(byesc, sizeof(byesc), self ? self : "");
+  char evt[240];
+  snprintf(evt, sizeof(evt),
+           "@event char.forgiven "
+           "{\"by\":\"%s\",\"ashsworn\":false,\"redeemed\":false}\r\n",
+           byesc);
+  hg_queue_cstr(target, evt);
+  hg_queue_cstr(
+      target,
+      "It lands, and it stays with you. The road is still yours to walk, "
+      "but you are not walking it unseen.\r\n");
+}
+
+void hg_emit_forgiven_redeemed_now(void *target, void *forgiver) {
+  const char *self = hg_s_str(forgiver, HG_SESSION_NAME);
+  const char *tname = hg_s_str(target, HG_SESSION_NAME);
+  const char *title = hg_s_str(target, HG_SESSION_TITLE);
+  char byesc[80], nesc[80], tesc[80];
+  hg_json_escape(byesc, sizeof(byesc), self ? self : "");
+  hg_json_escape(nesc, sizeof(nesc), tname ? tname : "");
+  hg_json_escape(tesc, sizeof(tesc), title ? title : "");
+  char evt[240];
+  snprintf(evt, sizeof(evt),
+           "@event char.forgiven "
+           "{\"by\":\"%s\",\"ashsworn\":false,\"redeemed\":true}\r\n",
+           byesc);
+  hg_queue_cstr(target, evt);
+  snprintf(evt, sizeof(evt),
+           "@event grid.redemption {\"name\":\"%s\",\"title\":\"%s\"}\r\n",
+           nesc, tesc);
+  hg_queue_cstr(target, evt);
+  hg_queue_cstr(
+      target,
+      "Something you had been carrying alone, you are not carrying alone "
+      "anymore. You found your way back, and someone met you on the road. "
+      "(you are the Returned)\r\n");
+  hg_emit_affects_now(target);
 }

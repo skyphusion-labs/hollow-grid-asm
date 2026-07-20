@@ -4,8 +4,9 @@
 written primarily in NASM assembly. A tiny C shim adapts the libwebsockets ABI.
 Assembly owns game rules, state transitions, protocol framing, and world content.
 
-Live deployment: `wss://basalt.skyphusion.org/ws` (fleet stack on biafra via
-`cloudflared-fleet`). GHCR image: `ghcr.io/skyphusion-labs/hollow-grid-asm`.
+Public world is offline pending finished-product review (fleet stack parked on
+biafra). GHCR image: `ghcr.io/skyphusion-labs/hollow-grid-asm` (push gated by
+`BASALT_AUTODEPLOY` / version tag until re-enable).
 
 ## Contract
 
@@ -30,13 +31,20 @@ Default listen port: `8793`.
 ```text
 client -> libwebsockets -> tiny C ABI shim -> NASM engine
                                              |
-                                             +-> game rules and world state
-                                             +-> commands and event payloads
-                                             +-> persistence and federation seams
+                                             +-> game rules, state transitions,
+                                             |   and command dispatch
+                                             +-> world content and the moral
+                                             |   arc/economy/rescue systems
+                                             +-> event payloads and
+                                                 persistence/federation seams
 ```
 
-The C layer must remain an ABI adapter. Moving game logic into C breaks the
-port's defining boundary.
+NASM decides every rule: when a command applies, what it mutates, and what
+prose or event it produces. C is three narrow files: `lws_shim.c` (the
+libwebsockets ABI shim), `format.c` (bounded JSON/prose formatting and
+hub-row presentation), and `grid_hub.c` (federation HTTP/JSON transport). C
+may format `@event` JSON from state or hub rows that asm already decided; it
+never decides a command or mutates game rules.
 
 ## Repository guide
 
@@ -64,9 +72,12 @@ docker build --platform linux/amd64 -t hollow-grid-asm .
 docker run --rm -p 8793:8793 hollow-grid-asm
 ```
 
-CI (`ci.yml`) runs `make check` plus blocking upstream smoke. `release.yml` on
-`main` pushes GHCR (`:<sha>` + `:latest`) and dispatches a fleet
-`basalt-relay-roll`. Fleet IaC and roll runbook live in `fleet-chezmoi`
+CI (`ci.yml`) runs `make check` plus blocking upstream smoke. `release.yml`
+builds the image on every push/PR; GHCR push and the fleet roll dispatch fire
+only on a pushed version tag (`v*`), never on a merge to `main` (#22), and
+only when repo variable `BASALT_AUTODEPLOY` is `true` (#20). Basalt Relay
+stays offline until both a tagged release and Mackaye's code review land.
+Fleet IaC and roll runbook live in `fleet-chezmoi`
 (`system/stacks/biafra/basalt-relay/`, `RUNBOOK-basalt-relay-roll.md`).
 
 ## License
