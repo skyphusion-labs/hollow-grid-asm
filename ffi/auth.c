@@ -51,7 +51,8 @@ int hg_auth_phrase_ok(const char *phrase) {
 
 static int make_bcrypt_salt(char *out, size_t out_len) {
   unsigned char raw[16];
-  if (out_len < 32) {
+  /* "$2b$10$" (7) + 22 bcrypt salt chars + NUL = 30; round up for -Wstringop-overflow. */
+  if (out_len < 40) {
     return -1;
   }
   if (RAND_bytes(raw, (int)sizeof(raw)) != 1) {
