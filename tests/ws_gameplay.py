@@ -5,7 +5,7 @@ import sys
 import time
 import uuid
 
-from ws_common import connect, send_text
+from ws_common import complete_login, connect, send_text
 
 
 def read_until(ws, needle: str, limit: int = 80) -> str:
@@ -22,11 +22,7 @@ def read_until(ws, needle: str, limit: int = 80) -> str:
 
 def login(port: int, name: str):
     ws = connect(port)
-    read_until(ws, "wanderer?")
-    send_text(ws.sock, name)
-    read_until(ws, "char.create")
-    send_text(ws.sock, "1")
-    read_until(ws, "@event room.info")
+    complete_login(ws, name)
     return ws
 
 

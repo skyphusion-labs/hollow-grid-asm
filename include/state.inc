@@ -9,6 +9,8 @@
 %define HG_LOGIN_NAME 0
 %define HG_LOGIN_RACE 1
 %define HG_LOGIN_PLAY 2
+%define HG_LOGIN_TOKEN 3
+%define HG_LOGIN_PASSPHRASE 4
 
 ; --- session layout (one lws per-connection user block) ---
 ; Keep in lockstep with include/hg_session.h
@@ -57,7 +59,10 @@
 %define SESSION_RX_LEN       17136  ; assembled-message length, -1 = overflowed
 %define SESSION_RX           17144  ; WS fragment reassembly buffer
 %define SESSION_RX_CAP       256
-%define SESSION_SIZE         17400
+%define SESSION_SECRET_HASH    17400  ; 72 bytes (bcrypt)
+%define SESSION_KEEPER_AUTHED  17472
+%define SESSION_PASS_MODE      17480  ; 0=new character, 1=resume
+%define SESSION_SIZE           17488
 
 ; Legacy aliases used during the offset rename (map to new names).
 %define SESSION_WEAPON           SESSION_EQ_WEAPON

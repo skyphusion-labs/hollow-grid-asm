@@ -33,6 +33,36 @@ store_failed:
 store_failed_end:
 store_failed_len: equ store_failed_end - store_failed
 
+keeper_token_prompt:
+    db "The Grid remembers keepers. Speak the keeper's token:", 13, 10
+keeper_token_prompt_end:
+keeper_token_prompt_len: equ keeper_token_prompt_end - keeper_token_prompt
+
+keeper_token_fail:
+    db "The Grid does not recognize you as keeper.", 13, 10
+keeper_token_fail_end:
+keeper_token_fail_len: equ keeper_token_fail_end - keeper_token_fail
+
+passphrase_new_prompt:
+    db "Choose a secret phrase only you will know. The Grid will ask for it when you return.", 13, 10
+passphrase_new_prompt_end:
+passphrase_new_prompt_len: equ passphrase_new_prompt_end - passphrase_new_prompt
+
+passphrase_resume_prompt:
+    db "By what secret phrase do you prove yourself?", 13, 10
+passphrase_resume_prompt_end:
+passphrase_resume_prompt_len: equ passphrase_resume_prompt_end - passphrase_resume_prompt
+
+passphrase_fail:
+    db "The Grid does not recognize that phrase for this name.", 13, 10
+passphrase_fail_end:
+passphrase_fail_len: equ passphrase_fail_end - passphrase_fail
+
+passphrase_short:
+    db "That phrase will not do. Choose one at least eight characters long.", 13, 10
+passphrase_short_end:
+passphrase_short_len: equ passphrase_short_end - passphrase_short
+
 faction_none: db "none", 0
 position_standing: db "standing", 0
 item_shiv: db "shiv", 0
@@ -61,6 +91,11 @@ extern hg_session_register
 extern hg_session_unregister
 extern hg_grid_load_session
 extern hg_grid_commit_session
+extern hg_is_admin
+extern hg_auth_verify_admin_token
+extern hg_auth_hash_passphrase
+extern hg_auth_verify_passphrase
+extern hg_auth_phrase_ok
 
 section .text
 
@@ -270,6 +305,10 @@ hg_app_callback:
 .dispatch:
     cmp qword [r13 + SESSION_STATE], HG_LOGIN_NAME
     je .name
+    cmp qword [r13 + SESSION_STATE], HG_LOGIN_TOKEN
+    je .token
+    cmp qword [r13 + SESSION_STATE], HG_LOGIN_PASSPHRASE
+    je .passphrase
     cmp qword [r13 + SESSION_STATE], HG_LOGIN_RACE
     je .race
     mov rdi, r13
@@ -296,6 +335,35 @@ hg_app_callback:
     mov rdx, r15
     call memcpy wrt ..plt
     mov byte [r13 + SESSION_NAME + r15], 0
+    lea rdi, [r13 + SESSION_NAME]
+    call hg_is_admin wrt ..plt
+    test eax, eax
+    jz .after_admin_check
+    mov qword [r13 + SESSION_STATE], HG_LOGIN_TOKEN
+    mov rdi, r13
+    mov rsi, r12
+    lea rdx, [rel keeper_token_prompt]
+    mov ecx, keeper_token_prompt_len
+    call hg_session_queue
+    jmp .ok
+
+.token:
+    mov rdi, r14
+    call hg_auth_verify_admin_token wrt ..plt
+    test eax, eax
+    jz .token_fail
+    mov qword [r13 + SESSION_KEEPER_AUTHED], 1
+    jmp .after_admin_check
+.token_fail:
+    mov rdi, r13
+    mov rsi, r12
+    lea rdx, [rel keeper_token_fail]
+    mov ecx, keeper_token_fail_len
+    call hg_session_queue
+    mov qword [r13 + SESSION_CLOSE], 1
+    jmp .ok
+
+.after_admin_check:
     mov rdi, r13
     call hg_store_load
     cmp eax, 1
@@ -318,15 +386,96 @@ hg_app_callback:
     mov rdi, r13
     call hg_grid_load_session wrt ..plt
     cmp eax, 0
-    jne .resume
+    jne .resume_to_passphrase
     mov rdi, r13
     call hg_grid_commit_session wrt ..plt
-    jmp .resume
+    jmp .resume_to_passphrase
 .resume_hub:
     mov rdi, r13
     call hg_store_save
-.resume:
+.resume_to_passphrase:
+    mov qword [r13 + SESSION_PASS_MODE], 1
+    jmp .begin_passphrase
+
+.begin_passphrase:
+    mov qword [r13 + SESSION_STATE], HG_LOGIN_PASSPHRASE
+    cmp byte [r13 + SESSION_SECRET_HASH], 0
+    je .prompt_new_passphrase
+    mov rdi, r13
+    mov rsi, r12
+    lea rdx, [rel passphrase_resume_prompt]
+    mov ecx, passphrase_resume_prompt_len
+    call hg_session_queue
+    jmp .ok
+.prompt_new_passphrase:
+    mov rdi, r13
+    mov rsi, r12
+    lea rdx, [rel passphrase_new_prompt]
+    mov ecx, passphrase_new_prompt_len
+    call hg_session_queue
+    jmp .ok
+
+.passphrase:
+    cmp byte [r13 + SESSION_SECRET_HASH], 0
+    je .passphrase_set_new
+    mov rdi, r14
+    lea rsi, [r13 + SESSION_SECRET_HASH]
+    call hg_auth_verify_passphrase wrt ..plt
+    test eax, eax
+    jz .passphrase_bad
+    jmp .passphrase_ok
+.passphrase_set_new:
+    mov rdi, r14
+    call hg_auth_phrase_ok wrt ..plt
+    test eax, eax
+    jz .passphrase_too_short
+    mov rdi, r14
+    lea rsi, [r13 + SESSION_SECRET_HASH]
+    mov edx, 72
+    call hg_auth_hash_passphrase wrt ..plt
+    test eax, eax
+    jnz .passphrase_too_short
+.passphrase_ok:
+    cmp qword [r13 + SESSION_PASS_MODE], 1
+    je .enter_play_resume
+    mov rdi, r13
+    call hg_store_save
+    mov rdi, r13
+    call hg_grid_commit_session wrt ..plt
     mov qword [r13 + SESSION_STATE], HG_LOGIN_PLAY
+    mov rdi, r13
+    mov rsi, r12
+    lea rdx, [rel welcome]
+    mov ecx, welcome_len
+    call hg_session_queue
+    mov rdi, r13
+    mov rsi, r12
+    call hg_emit_scene
+    mov rdi, r13
+    mov rsi, r12
+    call hg_session_register
+    jmp .ok
+.passphrase_bad:
+    mov rdi, r13
+    mov rsi, r12
+    lea rdx, [rel passphrase_fail]
+    mov ecx, passphrase_fail_len
+    call hg_session_queue
+    mov qword [r13 + SESSION_CLOSE], 1
+    jmp .ok
+.passphrase_too_short:
+    mov rdi, r13
+    mov rsi, r12
+    lea rdx, [rel passphrase_short]
+    mov ecx, passphrase_short_len
+    call hg_session_queue
+    mov qword [r13 + SESSION_CLOSE], 1
+    jmp .ok
+
+.enter_play_resume:
+    mov qword [r13 + SESSION_STATE], HG_LOGIN_PLAY
+    mov rdi, r13
+    call hg_store_save
     mov rdi, r13
     mov rsi, r12
     lea rdx, [rel resumed]
@@ -375,23 +524,8 @@ hg_app_callback:
     mov rsi, [rdx + rax * 8]
     lea rdi, [r13 + SESSION_RACE]
     call strcpy wrt ..plt
-    mov rdi, r13
-    call hg_store_save
-    mov rdi, r13
-    call hg_grid_commit_session wrt ..plt
-    mov qword [r13 + SESSION_STATE], HG_LOGIN_PLAY
-    mov rdi, r13
-    mov rsi, r12
-    lea rdx, [rel welcome]
-    mov ecx, welcome_len
-    call hg_session_queue
-    mov rdi, r13
-    mov rsi, r12
-    call hg_emit_scene
-    mov rdi, r13
-    mov rsi, r12
-    call hg_session_register
-    jmp .ok
+    mov qword [r13 + SESSION_PASS_MODE], 0
+    jmp .begin_passphrase
 .bad_race:
     mov rdi, r13
     mov rsi, r12

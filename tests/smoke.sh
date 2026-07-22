@@ -34,6 +34,7 @@ if [ -z "$smoke_mjs" ] || [ ! -f "$smoke_mjs" ]; then
 fi
 
 ADMINS="${ADMINS:-skyphusion}" \
+ADMIN_TOKEN="${ADMIN_TOKEN:-ci-test-admin-token}" \
 "$binary" --addr "127.0.0.1:$port" --data "$data" \
   >"$log" 2>&1 &
 pid=$!

@@ -1465,6 +1465,8 @@ hg_cmd_wall:
     call hg_is_admin wrt ..plt
     test eax, eax
     jz .not_admin
+    cmp qword [r12 + SESSION_KEEPER_AUTHED], 0
+    je .not_admin
     test r14, r14
     jnz .have
     lea r14, [rel empty_str]

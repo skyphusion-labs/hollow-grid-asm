@@ -99,6 +99,8 @@ def login(port: int, name: str) -> socket.socket:
     send_text(sock, name)
     read_until(sock, "char.create")
     send_text(sock, "1")
+    read_until(sock, "secret phrase")
+    send_text(sock, "ci-test-passphrase")
     read_until(sock, "@event room.info")
     return sock
 

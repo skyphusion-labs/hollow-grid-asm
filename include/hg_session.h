@@ -50,7 +50,10 @@
 #define HG_SESSION_RX_LEN 17136 /* assembled-message length, -1 = overflowed */
 #define HG_SESSION_RX 17144     /* WS fragment reassembly buffer */
 #define HG_SESSION_RX_CAP 256
-#define HG_SESSION_SIZE 17400
+#define HG_SESSION_SECRET_HASH 17400
+#define HG_SESSION_KEEPER_AUTHED 17472
+#define HG_SESSION_PASS_MODE 17480
+#define HG_SESSION_SIZE 17488
 
 #define HG_MAX_SESSIONS 32
 

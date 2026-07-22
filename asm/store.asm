@@ -28,6 +28,7 @@ key_strayed: db "strayed", 0
 key_redeemed: db "redeemed", 0
 key_resisted: db "resisted", 0
 key_inventory: db "inventory", 0
+key_secret_hash: db "secretHash", 0
 
 section .bss
 
@@ -353,6 +354,16 @@ hg_store_load:
     LOAD_BOOL key_redeemed, SESSION_REDEEMED
     LOAD_BOOL key_resisted, SESSION_RESISTED
 
+    lea rdi, [r12 + SESSION_SECRET_HASH]
+    xor esi, esi
+    mov edx, 72
+    call memset wrt ..plt
+    mov rdi, r14
+    lea rsi, [rel key_secret_hash]
+    lea rdx, [r12 + SESSION_SECRET_HASH]
+    mov ecx, 72
+    call json_string
+
     ; Clear inventory, then load from JSON array when present (#13).
     lea rdi, [r12 + SESSION_INVENTORY]
     xor esi, esi
@@ -507,6 +518,7 @@ hg_store_save:
     ADD_BOOL key_strayed, SESSION_STRAYED
     ADD_BOOL key_redeemed, SESSION_REDEEMED
     ADD_BOOL key_resisted, SESSION_RESISTED
+    ADD_STRING key_secret_hash, SESSION_SECRET_HASH
 
     mov rdi, r13
     lea rsi, [rel key_inventory]

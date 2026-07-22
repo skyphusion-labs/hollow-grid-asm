@@ -20,7 +20,7 @@ import time
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-from ws_common import connect, send_text
+from ws_common import complete_login, connect, send_text
 
 # Shared, flipped by main between phases.
 MODE = {"v": "malformed"}
@@ -92,12 +92,7 @@ def wait_health(port: int, server: subprocess.Popen | None = None) -> str:
 
 def login(port: int, name: str):
     ws = connect(port)
-    read_until(ws, "wanderer?")
-    send_text(ws.sock, name)
-    first = read_until(ws, "@event")
-    if "char.create" in first:
-        send_text(ws.sock, "1")
-        read_until(ws, "@event room.info")
+    complete_login(ws, name)
     return ws
 
 

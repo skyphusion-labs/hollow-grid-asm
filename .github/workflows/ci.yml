@@ -48,6 +48,7 @@ jobs:
           SMOKE_SLOW: "2"
           DUSTFALL_URL: ws://127.0.0.1:18788/ws
           ADMINS: skyphusion
+          ADMIN_TOKEN: ci-test-admin-token
         run: make smoke
       - name: Build container
         run: docker build --platform linux/amd64 .

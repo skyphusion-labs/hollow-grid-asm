@@ -10,7 +10,7 @@ import sys
 import time
 import uuid
 
-from ws_common import connect, send_text
+from ws_common import ADMIN_TOKEN, TEST_PASSPHRASE, complete_login, connect, send_text
 
 
 def send_fragmented(sock: socket.socket, first: str, second: str) -> None:
@@ -43,11 +43,7 @@ def read_until(ws, needle: str, limit: int = 80) -> str:
 
 def login(port: int, name: str):
     ws = connect(port)
-    read_until(ws, "wanderer?")
-    send_text(ws.sock, name)
-    read_until(ws, "char.create")
-    send_text(ws.sock, "1")
-    read_until(ws, "@event room.info")
+    complete_login(ws, name)
     return ws
 
 
@@ -124,8 +120,7 @@ def main() -> None:
 
     # Resume original character: title persisted, inventory still real (#13).
     resume = connect(port)
-    read_until(resume, "wanderer?")
-    send_text(resume.sock, name)
+    complete_login(resume, name)
     resumed = read_until(resume, "@event room.info")
     if "char.create" in resumed:
         raise RuntimeError("returning character asked to choose a race")
