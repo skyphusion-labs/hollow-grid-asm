@@ -5,7 +5,7 @@ set -eu
 
 binary=${1:-./build/hollow-grid-asm}
 port=${HG_SMOKE_PORT:-8793}
-upstream_sha=${HG_SMOKE_SHA:-2558d00f3637033d00cf6f82ff45bda78fc57748}
+upstream_sha=${HG_SMOKE_SHA:-67eb601e593fe05febd75fd8e5fa6bfd363ee661}
 smoke_mjs=${SMOKE_MJS:-}
 data=$(mktemp -d)
 log=$(mktemp)
