@@ -106,17 +106,29 @@ def wait_record(path: str, room_index: int, timeout: float = 5.0) -> dict:
     ) from last_error
 
 
+def complete_new_character(sock: socket.socket, race: str, phrase: str) -> None:
+    read_until(sock, "char.create")
+    send_text(sock, race)
+    read_until(sock, "secret phrase")
+    send_text(sock, phrase)
+
+
+def complete_resume(sock: socket.socket, phrase: str) -> None:
+    read_until(sock, "secret phrase")
+    send_text(sock, phrase)
+
+
 def main() -> None:
     port = int(sys.argv[1])
     data_dir = sys.argv[2]
     name = "PersistAsm"
+    phrase = "persist-test-phrase"
     path = os.path.join(data_dir, "characters", "persistasm.json")
 
     first = connect(port)
     read_until(first, "wanderer?")
     send_text(first, name)
-    read_until(first, "char.create")
-    send_text(first, "Human")
+    complete_new_character(first, "Human", phrase)
     read_until(first, '"id":"nexus"')
     send_text(first, "down")
     read_until(first, '"id":"tunnels"')
@@ -126,6 +138,7 @@ def main() -> None:
     second = connect(port)
     read_until(second, "wanderer?")
     send_text(second, name)
+    complete_resume(second, phrase)
     resumed = read_until(second, '"id":"tunnels"')
     if "char.create" in resumed:
         raise RuntimeError("returning character was asked to choose a race")
@@ -145,6 +158,7 @@ def main() -> None:
     assert record["roomIndex"] == 24
     assert record["hp"] == 30
     assert record["inventory"] == ["shiv"]
+    assert record.get("secretHash")
     print("WebSocket persistence checks passed")
 
 

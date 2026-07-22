@@ -19,7 +19,7 @@ import sys
 import tempfile
 import urllib.request
 
-from ws_common import connect, send_text
+from ws_common import complete_login, connect, send_text
 
 CASTS = 260  # > GL_MAX_CASTS (200) so the ring wraps at least once
 
@@ -36,14 +36,9 @@ def read_until(ws, needle: str, limit: int = 200) -> str:
     raise RuntimeError(f"did not receive {needle!r}: {transcript[-400:]!r}")
 
 
-def login(port: int, name: str):
+def login(port: int, name: str, *, keeper: bool = False):
     ws = connect(port)
-    read_until(ws, "wanderer?")
-    send_text(ws.sock, name)
-    first = read_until(ws, "@event")
-    if "char.create" in first:
-        send_text(ws.sock, "1")
-        read_until(ws, "@event room.info")
+    complete_login(ws, name, keeper=keeper)
     return ws
 
 
@@ -70,6 +65,7 @@ def main() -> None:
         # so the keeper name passes hg_is_admin and gridstats is allowed.
         env.pop("GRID_HUB_URL", None)
         env["ADMINS"] = keeper
+        env["ADMIN_TOKEN"] = os.environ.get("ADMIN_TOKEN", "ci-test-admin-token")
         server = subprocess.Popen(
             [binary, "--addr", f"127.0.0.1:{port}", "--data", data],
             env=env,
@@ -78,7 +74,7 @@ def main() -> None:
         )
         try:
             wait_health(port)
-            ws = login(port, keeper)
+            ws = login(port, keeper, keeper=True)
 
             # Non-keeper must be refused gridstats (asm admin gate, negative).
             drifter = login(port, "Drifter")

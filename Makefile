@@ -7,7 +7,7 @@ CFLAGS ?= -std=c11 -Wall -Wextra -Wpedantic -Werror -O2
 NASMFLAGS ?= -f elf64 -Wall -Werror -Iinclude/ -Iasm/ -g -F dwarf
 # --fatal-warnings gates DT_TEXTREL and friends; keep pointer tables in .data.rel.ro.
 LDFLAGS ?= -pie -Wl,-z,relro,-z,now,-z,noexecstack -Wl,--fatal-warnings
-LDLIBS += $(shell $(PKG_CONFIG) --libs libwebsockets libcjson openssl libcurl)
+LDLIBS += $(shell $(PKG_CONFIG) --libs libwebsockets libcjson openssl libcurl) -lcrypt
 
 BUILD := build
 OBJ := $(BUILD)/obj
@@ -28,7 +28,7 @@ ASM_SRC := \
 	asm/session.asm \
 	asm/store.asm \
 	asm/world.asm
-C_SRC := ffi/lws_shim.c ffi/grid_hub.c ffi/format.c
+C_SRC := ffi/lws_shim.c ffi/grid_hub.c ffi/format.c ffi/auth.c
 
 ASM_OBJ := $(ASM_SRC:%=$(OBJ)/%.o)
 C_OBJ := $(C_SRC:%=$(OBJ)/%.o)

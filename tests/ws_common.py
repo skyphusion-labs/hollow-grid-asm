@@ -103,3 +103,46 @@ def connect(port: int) -> WsClient:
         raise RuntimeError(f"WebSocket upgrade failed: {response!r}")
     sock.settimeout(0.5)
     return WsClient(sock)
+
+
+TEST_PASSPHRASE = os.environ.get("HG_TEST_PASSPHRASE", "ci-test-passphrase")
+ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "ci-test-admin-token")
+
+
+def read_until_ws(ws: WsClient, needle: str, limit: int = 80) -> str:
+    transcript = ""
+    for _ in range(limit):
+        try:
+            transcript += ws.recv_text()
+        except socket.timeout:
+            continue
+        if needle in transcript:
+            return transcript
+    raise RuntimeError(f"did not receive {needle!r}: {transcript!r}")
+
+
+def complete_login(ws: WsClient, name: str, *, keeper: bool = False) -> None:
+    read_until_ws(ws, "wanderer?")
+    send_text(ws.sock, name)
+    if keeper:
+        read_until_ws(ws, "keeper's token")
+        send_text(ws.sock, ADMIN_TOKEN)
+    transcript = ""
+    for _ in range(80):
+        try:
+            transcript += ws.recv_text()
+        except socket.timeout:
+            continue
+        if "@event room.info" in transcript:
+            return
+        if "char.create" in transcript:
+            send_text(ws.sock, "1")
+            read_until_ws(ws, "secret phrase")
+            send_text(ws.sock, TEST_PASSPHRASE)
+            read_until_ws(ws, "@event room.info")
+            return
+        if "secret phrase" in transcript or "prove yourself" in transcript:
+            send_text(ws.sock, TEST_PASSPHRASE)
+            read_until_ws(ws, "@event room.info")
+            return
+    raise RuntimeError(f"login stalled: {transcript!r}")

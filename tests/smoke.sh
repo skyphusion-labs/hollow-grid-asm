@@ -5,13 +5,13 @@ set -eu
 
 binary=${1:-./build/hollow-grid-asm}
 port=${HG_SMOKE_PORT:-8793}
-upstream_sha=${HG_SMOKE_SHA:-2558d00f3637033d00cf6f82ff45bda78fc57748}
+upstream_sha=${HG_SMOKE_SHA:-67eb601e593fe05febd75fd8e5fa6bfd363ee661}
 smoke_mjs=${SMOKE_MJS:-}
 data=$(mktemp -d)
 log=$(mktemp)
 # Full suite can exceed a few minutes under CI load; give headroom and honor SMOKE_SLOW.
-# Mirror hollow-grid-c: at least 10 minutes (600s). See #15 / fleet smoke truncation.
-smoke_timeout=${HG_SMOKE_TIMEOUT:-600}
+# Mirror hollow-grid-c coverage CI: 900s headroom under SMOKE_SLOW=2. See #15 / fleet smoke truncation.
+smoke_timeout=${HG_SMOKE_TIMEOUT:-900}
 
 if [ -z "$smoke_mjs" ]; then
   for cand in \
@@ -34,6 +34,7 @@ if [ -z "$smoke_mjs" ] || [ ! -f "$smoke_mjs" ]; then
 fi
 
 ADMINS="${ADMINS:-skyphusion}" \
+ADMIN_TOKEN="${ADMIN_TOKEN:-ci-test-admin-token}" \
 "$binary" --addr "127.0.0.1:$port" --data "$data" \
   >"$log" 2>&1 &
 pid=$!

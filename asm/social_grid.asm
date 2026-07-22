@@ -353,6 +353,8 @@ hg_cmd_gridstats:
     call hg_is_admin wrt ..plt
     test eax, eax
     jz .deny
+    cmp qword [r12 + SESSION_KEEPER_AUTHED], 0
+    je .deny
     mov rdi, r12
     call hg_emit_gridstats_cmd_now wrt ..plt
     CMD_UNALIGN
@@ -371,6 +373,8 @@ hg_cmd_gridprune:
     call hg_is_admin wrt ..plt
     test eax, eax
     jz .deny
+    cmp qword [r12 + SESSION_KEEPER_AUTHED], 0
+    je .deny
     mov rdi, r12
     call hg_emit_gridprune_cmd_now wrt ..plt
     CMD_UNALIGN

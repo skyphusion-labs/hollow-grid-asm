@@ -37,17 +37,18 @@ jobs:
           git clone --depth 1 \
             https://github.com/skyphusion-labs/the-hollow-grid.git /tmp/the-hollow-grid
           git -C /tmp/the-hollow-grid fetch --depth 1 origin \
-            2558d00f3637033d00cf6f82ff45bda78fc57748
+            67eb601e593fe05febd75fd8e5fa6bfd363ee661
           git -C /tmp/the-hollow-grid checkout \
-            2558d00f3637033d00cf6f82ff45bda78fc57748
+            67eb601e593fe05febd75fd8e5fa6bfd363ee661
       - name: Blocking upstream smoke
         env:
           SMOKE_MJS: /tmp/the-hollow-grid/smoke.mjs
           HG_SMOKE_PORT: "8793"
-          HG_SMOKE_TIMEOUT: "600"
+          HG_SMOKE_TIMEOUT: "900"
           SMOKE_SLOW: "2"
           DUSTFALL_URL: ws://127.0.0.1:18788/ws
           ADMINS: skyphusion
+          ADMIN_TOKEN: ci-test-admin-token
         run: make smoke
       - name: Build container
         run: docker build --platform linux/amd64 .

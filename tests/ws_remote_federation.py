@@ -157,8 +157,10 @@ def main() -> None:
             ws = connect(mud_port)
             read_until(ws, "wanderer?")
             send_text(ws.sock, "RemoteHero")
-            resumed = read_until(ws, "@event room.info")
-            if "char.create" in resumed:
+            read_until(ws, "secret phrase")
+            send_text(ws.sock, "ci-test-passphrase")
+            room_info = read_until(ws, "@event room.info")
+            if "char.create" in room_info:
                 raise RuntimeError("canonical remote character asked for a new race")
             send_text(ws.sock, "whoami")
             identity = read_until(ws, "@event char.identity")
@@ -200,6 +202,8 @@ def main() -> None:
             send_text(fresh.sock, "CommitHero")
             read_until(fresh, "char.create")
             send_text(fresh.sock, "1")
+            read_until(fresh, "secret phrase")
+            send_text(fresh.sock, "ci-test-passphrase")
             read_until(fresh, "@event room.info")
             send_text(fresh.sock, "north")
             read_until(fresh, '"id":"market"')
