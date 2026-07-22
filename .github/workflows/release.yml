@@ -53,6 +53,8 @@ jobs:
             libcurl4-openssl-dev libssl-dev
 
       - name: Build and check
+        env:
+          ADMIN_TOKEN: ci-test-admin-token
         run: make check
 
       - name: Build image
