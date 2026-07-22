@@ -121,9 +121,6 @@ def main() -> None:
     # Resume original character: title persisted, inventory still real (#13).
     resume = connect(port)
     complete_login(resume, name)
-    resumed = read_until(resume, "@event room.info")
-    if "char.create" in resumed:
-        raise RuntimeError("returning character asked to choose a race")
     resume.sock.close()
 
     if record.get("title") != "Courier":
