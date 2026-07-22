@@ -127,11 +127,22 @@ def complete_login(ws: WsClient, name: str, *, keeper: bool = False) -> None:
     if keeper:
         read_until_ws(ws, "keeper's token")
         send_text(ws.sock, ADMIN_TOKEN)
-    first = read_until_ws(ws, "@event")
-    if "char.create" in first:
-        send_text(ws.sock, "1")
-        read_until_ws(ws, "secret phrase")
-        send_text(ws.sock, TEST_PASSPHRASE)
-    elif "secret phrase" in first:
-        send_text(ws.sock, TEST_PASSPHRASE)
-    read_until_ws(ws, "@event room.info")
+    transcript = ""
+    for _ in range(80):
+        try:
+            transcript += ws.recv_text()
+        except socket.timeout:
+            continue
+        if "@event room.info" in transcript:
+            return
+        if "char.create" in transcript:
+            send_text(ws.sock, "1")
+            read_until_ws(ws, "secret phrase")
+            send_text(ws.sock, TEST_PASSPHRASE)
+            read_until_ws(ws, "@event room.info")
+            return
+        if "secret phrase" in transcript or "prove yourself" in transcript:
+            send_text(ws.sock, TEST_PASSPHRASE)
+            read_until_ws(ws, "@event room.info")
+            return
+    raise RuntimeError(f"login stalled: {transcript!r}")
