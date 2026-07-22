@@ -10,8 +10,8 @@ smoke_mjs=${SMOKE_MJS:-}
 data=$(mktemp -d)
 log=$(mktemp)
 # Full suite can exceed a few minutes under CI load; give headroom and honor SMOKE_SLOW.
-# Mirror hollow-grid-c: at least 10 minutes (600s). See #15 / fleet smoke truncation.
-smoke_timeout=${HG_SMOKE_TIMEOUT:-600}
+# Mirror hollow-grid-c coverage CI: 900s headroom under SMOKE_SLOW=2. See #15 / fleet smoke truncation.
+smoke_timeout=${HG_SMOKE_TIMEOUT:-900}
 
 if [ -z "$smoke_mjs" ]; then
   for cand in \
