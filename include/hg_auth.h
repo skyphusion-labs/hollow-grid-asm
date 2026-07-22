@@ -15,4 +15,7 @@ int hg_auth_hash_passphrase(const char *phrase, char *out, size_t out_len);
 /* Verify phrase against stored bcrypt hash. Returns 1 on match. */
 int hg_auth_verify_passphrase(const char *phrase, const char *hash);
 
+/* Fail closed at startup when ADMIN_TOKEN is unset. Returns 0 when configured. */
+int hg_auth_require_admin_token(void);
+
 #endif /* HG_AUTH_H */

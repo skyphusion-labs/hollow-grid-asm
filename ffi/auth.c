@@ -15,6 +15,15 @@ static int constant_time_eq(const char *a, const char *b, size_t n) {
   return diff == 0;
 }
 
+int hg_auth_require_admin_token(void) {
+  const char *expected = getenv("ADMIN_TOKEN");
+  if (expected == NULL || expected[0] == '\0') {
+    fprintf(stderr, "FATAL: ADMIN_TOKEN must be set (keeper login requires a non-empty token)\n");
+    return -1;
+  }
+  return 0;
+}
+
 int hg_auth_verify_admin_token(const char *token) {
   const char *expected = getenv("ADMIN_TOKEN");
   if (expected == NULL || expected[0] == '\0') {

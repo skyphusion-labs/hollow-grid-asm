@@ -29,6 +29,7 @@ usage:
     db "Contract: the-hollow-grid/docs/protocol.md", 0
 invalid_addr: db "invalid --addr, expected HOST:PORT", 0
 store_error: db "failed to initialize character store", 0
+admin_token_error: db "FATAL: ADMIN_TOKEN must be set", 10, 0
 
 extern hg_default_world
 extern getenv
@@ -36,6 +37,7 @@ extern strcmp
 extern sscanf
 extern snprintf
 extern puts
+extern hg_auth_require_admin_token
 extern hg_lws_run
 extern hg_store_init
 extern hg_world_boot
@@ -231,6 +233,10 @@ main:
     test eax, eax
     jnz .store_failed
 
+    call hg_auth_require_admin_token wrt ..plt
+    test eax, eax
+    jnz .admin_token_failed
+
     mov rdi, r15
     mov rsi, [rel world_url_ptr]
     mov rdx, [rel hub_url_ptr]
@@ -260,6 +266,12 @@ main:
 
 .store_failed:
     lea rdi, [rel store_error]
+    call puts wrt ..plt
+    mov eax, 1
+    jmp .done
+
+.admin_token_failed:
+    lea rdi, [rel admin_token_error]
     call puts wrt ..plt
     mov eax, 1
 
