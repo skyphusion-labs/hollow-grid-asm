@@ -53,8 +53,8 @@ static int make_bcrypt_salt(char *out, size_t out_len) {
   if (RAND_bytes(raw, (int)sizeof(raw)) != 1) {
     return -1;
   }
-  if (crypt_gensalt_blowfish_rn("$2b$", 10, raw, (int)sizeof(raw), out,
-                                (int)out_len) == NULL) {
+  if (crypt_gensalt_rn("$2b$", 10U, (const char *)raw, (int)sizeof(raw), out,
+                       (int)out_len) == NULL) {
     return -1;
   }
   return 0;
