@@ -12,6 +12,7 @@ COPY asm asm
 COPY include include
 COPY ffi ffi
 COPY tests tests
+ENV ADMIN_TOKEN=ci-test-admin-token
 RUN chmod +x tests/foundation.sh && make -j"$(nproc)" && make check
 
 FROM ubuntu:24.04 AS run

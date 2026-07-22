@@ -17,7 +17,7 @@ services:
       GRID_HUB_TOKEN: ${GRID_HUB_TOKEN:-}
       DATA_DIR: /data
       ADMINS: ${ADMINS:-skyphusion}
-      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:?set ADMIN_TOKEN in .env}
     volumes:
       - basalt-relay-data:/data
 
