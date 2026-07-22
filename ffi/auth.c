@@ -7,10 +7,6 @@
 #include <stdio.h>
 #include <string.h>
 
-static const char bcrypt_prefix[] = "$2b$10$";
-static const char bcrypt_alphabet[] =
-    "./ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
-
 static int constant_time_eq(const char *a, const char *b, size_t n) {
   unsigned char diff = 0;
   for (size_t i = 0; i < n; i++) {
@@ -51,26 +47,22 @@ int hg_auth_phrase_ok(const char *phrase) {
 
 static int make_bcrypt_salt(char *out, size_t out_len) {
   unsigned char raw[16];
-  /* "$2b$10$" (7) + 22 bcrypt salt chars + NUL = 30; round up for -Wstringop-overflow. */
-  if (out_len < 40) {
+  if (out_len < 30) {
     return -1;
   }
   if (RAND_bytes(raw, (int)sizeof(raw)) != 1) {
     return -1;
   }
-  memcpy(out, bcrypt_prefix, sizeof(bcrypt_prefix) - 1);
-  char *p = out + (sizeof(bcrypt_prefix) - 1);
-  for (size_t i = 0; i < 16; i++) {
-    *p++ = bcrypt_alphabet[raw[i] & 0x3f];
-    *p++ = bcrypt_alphabet[(raw[i] >> 6) & 0x3f];
+  if (crypt_gensalt_blowfish_rn("$2b$", 10, raw, (int)sizeof(raw), out,
+                                (int)out_len) == NULL) {
+    return -1;
   }
-  *p = '\0';
   return 0;
 }
 
 int hg_auth_hash_passphrase(const char *phrase, char *out, size_t out_len) {
   struct crypt_data data;
-  char salt[32];
+  char salt[64];
 
   if (!hg_auth_phrase_ok(phrase) || out == NULL || out_len < 72) {
     return -1;
