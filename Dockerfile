@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-FROM ubuntu:24.04 AS build
+FROM ubuntu:24.10 AS build
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       build-essential nasm pkg-config curl python3 \
@@ -15,7 +15,7 @@ COPY tests tests
 ENV ADMIN_TOKEN=ci-test-admin-token
 RUN chmod +x tests/foundation.sh && make -j"$(nproc)" && make check
 
-FROM ubuntu:24.04 AS run
+FROM ubuntu:24.10 AS run
 ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates \
