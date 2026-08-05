@@ -18,6 +18,13 @@ updates:
       interval: weekly
     commit-message:
       prefix: build
+    # Stay on Ubuntu 24.04 until NASM 3.x on 26.04 builds cleanly.
+    # 26.04 ships nasm 3.01, which fails under -Wall -Werror with:
+    #   error: 32-bit relative section-crossing relocation [-w+error=reloc-rel-dword]
+    # (hollow-grid-asm#43, #46). hollow-grid-c is pure C and can track 26.04.
+    ignore:
+      - dependency-name: "ubuntu"
+        update-types: ["version-update:semver-major"]
     groups:
       docker-images:
         patterns: ["*"]
