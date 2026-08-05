@@ -13,7 +13,7 @@ Guidance for agents working in this repository (only when explicitly tasked).
 ## Scope
 
 This is Basalt Relay, a Hollow Grid world-node port targeting x86-64 Linux with
-NASM. The current phase is foundation. Do not claim playability, protocol
+NASM. The current phase is standalone (fleet offline). Do not claim playability, protocol
 parity, smoke results, federation, deployment, or live status without verified
 artifacts.
 
