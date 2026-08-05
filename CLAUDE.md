@@ -1,6 +1,14 @@
 # CLAUDE.md
 
-Guidance for agents working in this repository.
+> ## HANDS-OFF -- Conrad's solo fun
+>
+> **No agent work in this repo without explicit task language from Conrad in the same
+> turn.** Prior foreign-agent damage took Basalt offline after a stop order was ignored.
+> Stop means stop. If you are not under an explicit task for this repo right now, leave.
+> Protocol authority remains `the-hollow-grid/docs/protocol.md`; this banner is about
+> *who may touch the tree*, not about where the wire contract lives.
+
+Guidance for agents working in this repository (only when explicitly tasked).
 
 ## Scope
 
@@ -12,10 +20,17 @@ artifacts.
 ## Authority
 
 1. `the-hollow-grid/docs/protocol.md` defines transport, events, health, and
-   federation.
+   federation. **Protocol authority is always upstream.**
 2. This repository defines Basalt Relay's implementation and world content.
 3. `hollow-grid-c`, `hollow-grid-go`, and `hollow-grid-py` are sibling
    references. They do not override the protocol.
+
+## Toolchain pin (NASM / Ubuntu)
+
+NASM 3.x on Ubuntu 26.04 fails under `-Wall -Werror` with section-crossing
+`reloc-rel-dword` (same class as closed #43). **Stay on Ubuntu 24.04 for CI and
+local builds until that reloc issue is fixed.** Do not "fix" Dependabot by
+accepting a 26.04 pin that reintroduces the failure.
 
 ## Hard boundaries
 
