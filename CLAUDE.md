@@ -68,3 +68,9 @@ is the upstream `smoke.mjs` suite against the exact `@event` contract.
 
 Keep documentation concise and reproducible. Update `docs/PLAN.md` with
 evidence, not forecasts presented as completed work.
+
+## Release / deploy
+
+**Tag-gated production deploy.** Merges to `main` run CI only; they do not ship production.
+Cut an annotated SemVer tag on `main` to release (`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`).
+Deploy workflows assert the tag commit is an ancestor of `origin/main`.
