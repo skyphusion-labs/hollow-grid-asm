@@ -26,7 +26,11 @@ jobs:
             libcurl4-openssl-dev libssl-dev
       - uses: github/codeql-action/init@v4.37.4
         with:
-          languages: c-cpp
+          # fc#1652: this repo also carries 8 Python websocket test harnesses under
+          # tests/ (45KB by the linguist census) and they were unanalysed. The C leg
+          # needs the traced `make` below; Python is a no-build extractor and simply
+          # rides along on the same init, so this costs one extraction and no new step.
+          languages: c-cpp,python
       - name: Build
         run: make
       - uses: github/codeql-action/analyze@v4.37.4
