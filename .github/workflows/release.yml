@@ -10,16 +10,16 @@ name: release
 # Blocking upstream smoke stays in ci.yml (PR gate). Do not duplicate it here as
 # informational/non-blocking.
 #
-# After a green GHCR push on a version tag, dispatches fleet-chezmoi basalt-relay-roll when the
-# fleet stack is live (org secret FLEET_DISPATCH_TOKEN).
+# There is no deploy step after the GHCR push: the Hetzner fleet was decommissioned
+# 2026-09-24, so this workflow's only release output is the GHCR image.
 #
 # PARKED 2026-07-19: Basalt Relay is intentionally OFFLINE after a
-# federation-crashing bug. GHCR push and the fleet roll are gated behind repo
-# variable BASALT_AUTODEPLOY. They only run when it is set to "true". Leave it
-# unset/false until the fixes pass Mackaye's code review, then set the variable
-# to re-enable live deploys. Build + check + image build still run every merge.
-# Tag-gating alone is not enough -- a routine v* tag must not resurrect basalt
-# while the kill-switch is unset.
+# federation-crashing bug. The GHCR push is gated behind repo variable
+# BASALT_AUTODEPLOY and only runs when it is set to "true". Leave it unset/false
+# until the fixes pass Mackaye's code review, then set the variable to re-enable
+# image publishing. Build + check + image build still run every merge. Tag-gating
+# alone is not enough -- a routine v* tag must not republish basalt while the
+# kill-switch is unset.
 
 on:
   push:
@@ -82,12 +82,6 @@ jobs:
           docker push "$IMAGE:${GITHUB_SHA}"
           docker push "$IMAGE:latest"
           echo "Pushed hollow-grid-asm:${GITHUB_SHA}."
-
-      - name: Dispatch basalt-relay roll to fleet-chezmoi (tag + autodeploy gate)
-        if: steps.gate.outputs.enabled == 'true'
-        env:
-          FLEET_DISPATCH_TOKEN: ${{ secrets.FLEET_DISPATCH_TOKEN }}
-        run: bash .github/scripts/dispatch-fleet-basalt-roll.sh
 
       - name: Clean up
         if: always()
