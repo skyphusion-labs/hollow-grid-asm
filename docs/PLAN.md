@@ -264,7 +264,7 @@ foundation (persistence, hardening, gameplay, federation),
 - [x] Add foundation container and protected-main CI
 - [x] Document deployment configuration and source-offer obligations
       (`release.yml` pushes `ghcr.io/skyphusion-labs/hollow-grid-asm`;
-      fleet stack `system/stacks/the retired fleet host/basalt-relay/` in fleet-chezmoi;
+      the retired fleet stack in fleet-chezmoi;
       AGPL source offer is this public repository)
 - [x] Deploy only after health, smoke, restart, and persistence checks pass
 - [x] Add a live URL only after verifying the deployed service
