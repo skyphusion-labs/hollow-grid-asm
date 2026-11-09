@@ -38,9 +38,11 @@ accepting a 26.04 pin that reintroduces the failure.
   arc/economy/rescue systems, action menus and valence, dream selection,
   prune-kind policy, LocalHub federation memory, and tide clamp. Anything that
   can live in NASM does.
-- C is three narrow files only: `lws_shim.c` (libwebsockets ABI), `format.c`
-  (bounded `@event`/prose serialization from values asm already chose), and
-  `grid_hub.c` (RemoteHub libcurl/cJSON plus hub-backed prose wrappers). C never
+- C is four narrow files under `ffi/`: `lws_shim.c` (libwebsockets ABI), `format.c`
+  (bounded `@event`/prose serialization from values asm already chose),
+  `grid_hub.c` (RemoteHub libcurl/cJSON plus hub-backed prose wrappers), and
+  `auth.c` (bcrypt passphrase hash and `ADMIN_TOKEN` compare; asm calls it and
+  still owns the login flow). `Makefile` `C_SRC` is that list. C never
   decides a command, moral menu, threshold, or LocalHub store mutation.
 - Runtime target is x86-64 Linux. Assembly syntax is NASM.
 - Default listen port is `8793`.
@@ -62,15 +64,23 @@ conformance. Differentiate through place and voice, not protocol drift.
 
 ## Verification
 
-Do not invent working commands. Add build and test instructions only when the
-corresponding targets exist and have been run. The eventual definition of done
-is the upstream `smoke.mjs` suite against the exact `@event` contract.
+Binary is `./build/hollow-grid-asm` (`Makefile` `BIN`). Default listen port is `8793`.
+
+```bash
+make check   # --help, tests/foundation.sh, and the ws_*.py checks
+make smoke   # tests/smoke.sh; ci.yml also runs upstream smoke.mjs on port 8793
+```
+
+Definition of done is the upstream `smoke.mjs` suite against the exact `@event` contract.
 
 Keep documentation concise and reproducible. Update `docs/PLAN.md` with
 evidence, not forecasts presented as completed work.
 
 ## Release / deploy
 
-**Tag-gated production deploy.** Merges to `main` run CI only; they do not ship production.
-Cut an annotated SemVer tag on `main` to release (`git tag -a vX.Y.Z -m "..." && git push origin vX.Y.Z`).
-Deploy workflows assert the tag commit is an ancestor of `origin/main`.
+**GHCR publish is parked. There is no host deploy.** Merges to `main` run CI and
+`release.yml` builds the image; they do not push it. The Hetzner fleet was
+decommissioned 2026-09-24, and `release.yml` has no deploy step.
+A `v*` tag pushes `ghcr.io/skyphusion-labs/hollow-grid-asm` (`:<sha>` and `:latest`)
+only when repo variable `BASALT_AUTODEPLOY` is `true`. `release.yml` does not
+assert that the tag commit is an ancestor of `origin/main`.
