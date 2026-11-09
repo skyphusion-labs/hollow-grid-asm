@@ -264,7 +264,7 @@ foundation (persistence, hardening, gameplay, federation),
 - [x] Add foundation container and protected-main CI
 - [x] Document deployment configuration and source-offer obligations
       (`release.yml` pushes `ghcr.io/skyphusion-labs/hollow-grid-asm`;
-      fleet stack `system/stacks/biafra/basalt-relay/` in fleet-chezmoi;
+      the retired fleet stack in fleet-chezmoi;
       AGPL source offer is this public repository)
 - [x] Deploy only after health, smoke, restart, and persistence checks pass
 - [x] Add a live URL only after verifying the deployed service
@@ -277,7 +277,7 @@ foundation (persistence, hardening, gameplay, federation),
 | Public WS | `wss://basalt.skyphusion.org/ws` |
 | Health | `https://basalt.skyphusion.org/health` |
 | Image | `ghcr.io/skyphusion-labs/hollow-grid-asm` |
-| Host bind | `10.1.1.6:8793` (biafra) |
+| Host bind | retired fleet host |
 | Stack path | `/opt/stacks/basalt-relay` |
 | Roll | `basalt-relay-roll` -> `roll-basalt-relay.sh` via deploy-proxy |
 
