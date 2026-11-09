@@ -4,8 +4,7 @@
 written primarily in NASM assembly. A tiny C shim adapts the libwebsockets ABI.
 Assembly owns game rules, state transitions, protocol framing, and world content.
 
-Public world is offline pending finished-product review (fleet stack parked on
-biafra). GHCR image: `ghcr.io/skyphusion-labs/hollow-grid-asm` (push gated by
+Public world is offline. The fleet host is retired. GHCR image: `ghcr.io/skyphusion-labs/hollow-grid-asm` (push gated by
 `BASALT_AUTODEPLOY` / version tag until re-enable).
 
 ## Contract
@@ -75,12 +74,11 @@ docker run --rm -p 8793:8793 hollow-grid-asm
 ```
 
 CI (`ci.yml`) runs `make check` plus blocking upstream smoke. `release.yml`
-builds the image on every push/PR; GHCR push and the fleet roll dispatch fire
+builds the image on every push/PR. GHCR push fires
 only on a pushed version tag (`v*`), never on a merge to `main` (#22), and
 only when repo variable `BASALT_AUTODEPLOY` is `true` (#20). Basalt Relay
-stays offline until both a tagged release and Mackaye's code review land.
-Fleet IaC and roll runbook live in `fleet-chezmoi`
-(`system/stacks/biafra/basalt-relay/`, `RUNBOOK-basalt-relay-roll.md`).
+stays offline until both a tagged release and a code review land.
+There is no fleet host to roll it onto.
 
 ## License
 
