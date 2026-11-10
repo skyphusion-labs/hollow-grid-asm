@@ -66,10 +66,10 @@ jobs:
         run: |
           if [ "${{ vars.BASALT_AUTODEPLOY }}" = "true" ]; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
-            echo "BASALT_AUTODEPLOY=true: GHCR push + fleet roll will run."
+            echo "BASALT_AUTODEPLOY=true: GHCR push will run."
           else
             echo "enabled=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Basalt autodeploy PARKED (BASALT_AUTODEPLOY unset/false); skipping GHCR push and fleet roll. World stays offline until Mackaye CR."
+            echo "::notice::Basalt autodeploy PARKED (BASALT_AUTODEPLOY unset/false); skipping GHCR push. World stays offline until Mackaye CR."
           fi
 
       - name: Log in to GHCR (tag + autodeploy gate)
