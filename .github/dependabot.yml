@@ -18,8 +18,9 @@ updates:
       interval: weekly
     commit-message:
       prefix: build
-    # Stay on Ubuntu 24.04 LTS until a later LTS builds cleanly with NASM 3.x.
-    # Majors: 26.04 ships nasm 3.01, which fails under -Wall -Werror with:
+    # Stay on Ubuntu 24.04 LTS for the image: the runtime is proven there. The Makefile now passes
+    # -Wno-reloc-rel-dword -Wno-reloc-abs-qword, so NASM 3.x no longer blocks a bump by itself (#68).
+    # Majors: 26.04 ships nasm 3.x, which failed under -Wall -Werror with:
     #   error: 32-bit relative section-crossing relocation [-w+error=reloc-rel-dword]
     #   (hollow-grid-asm#43, #46).
     # Minors: interim releases (e.g. 24.10 oracular) go EOL and apt archives 404

@@ -4,7 +4,17 @@ PKG_CONFIG ?= pkg-config
 
 CPPFLAGS += -Iinclude $(shell $(PKG_CONFIG) --cflags libwebsockets libcjson openssl libcurl)
 CFLAGS ?= -std=c11 -Wall -Wextra -Wpedantic -Werror -O2
-NASMFLAGS ?= -f elf64 -Wall -Werror -Iinclude/ -Iasm/ -g -F dwarf
+# NASM 3.x (Ubuntu 26.04) added reloc-rel-dword / reloc-abs-qword warnings that fire on EVERY
+# section-crossing reference, including a plain lea rax, [rel sym]: there is no clean spelling
+# (measured: even a 3-line program fails under -Wall -Werror). They are ordinary PC32/64 ELF
+# relocations the linker resolves; real mistakes (DT_TEXTREL etc) are still gated by
+# LDFLAGS --fatal-warnings below. Everything else stays -Wall -Werror (hollow-grid-asm#68).
+# NASM 2.x (the 24.04 Docker build) does not know these warning names, and -Werror turns an
+# unknown name into an error, so pass them only to NASM 3 and later (measured: 24.04 nasm 2.16
+# rejects them, 26.04 nasm 3.x needs them).
+NASM_MAJOR := $(shell $(NASM) -v 2>/dev/null | sed -n 's/^NASM version \([0-9][0-9]*\).*/\1/p')
+NASM_RELOC_OFF := $(if $(filter 0 1 2,$(NASM_MAJOR)),,-Wno-reloc-rel-dword -Wno-reloc-abs-qword)
+NASMFLAGS ?= -f elf64 -Wall -Werror $(NASM_RELOC_OFF) -Iinclude/ -Iasm/ -g -F dwarf
 # --fatal-warnings gates DT_TEXTREL and friends; keep pointer tables in .data.rel.ro.
 LDFLAGS ?= -pie -Wl,-z,relro,-z,now,-z,noexecstack -Wl,--fatal-warnings
 LDLIBS += $(shell $(PKG_CONFIG) --libs libwebsockets libcjson openssl libcurl) -lcrypt

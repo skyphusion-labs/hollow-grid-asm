@@ -27,10 +27,11 @@ artifacts.
 
 ## Toolchain pin (NASM / Ubuntu)
 
-NASM 3.x on Ubuntu 26.04 fails under `-Wall -Werror` with section-crossing
-`reloc-rel-dword` (same class as closed #43). **Stay on Ubuntu 24.04 for CI and
-local builds until that reloc issue is fixed.** Do not "fix" Dependabot by
-accepting a 26.04 pin that reintroduces the failure.
+NASM 3.x (Ubuntu 26.04) warns `reloc-rel-dword` and `reloc-abs-qword` on every section-crossing
+reference, so `-Wall -Werror` failed (closed #43, #46; #68). There is no clean spelling in the
+source (even `lea rax, [rel sym]` trips it), so the Makefile passes `-Wno-reloc-rel-dword
+-Wno-reloc-abs-qword`; every other warning stays fatal and the linker still gates DT_TEXTREL via
+`--fatal-warnings`. CI may track `ubuntu-latest`; the Dockerfile still builds on 24.04.
 
 ## Hard boundaries
 
