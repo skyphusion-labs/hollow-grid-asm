@@ -4,7 +4,12 @@ PKG_CONFIG ?= pkg-config
 
 CPPFLAGS += -Iinclude $(shell $(PKG_CONFIG) --cflags libwebsockets libcjson openssl libcurl)
 CFLAGS ?= -std=c11 -Wall -Wextra -Wpedantic -Werror -O2
-NASMFLAGS ?= -f elf64 -Wall -Werror -Iinclude/ -Iasm/ -g -F dwarf
+# NASM 3.x (Ubuntu 26.04) added reloc-rel-dword / reloc-abs-qword warnings that fire on EVERY
+# section-crossing reference, including a plain lea rax, [rel sym]: there is no clean spelling
+# (measured: even a 3-line program fails under -Wall -Werror). They are ordinary PC32/64 ELF
+# relocations the linker resolves; real mistakes (DT_TEXTREL etc) are still gated by
+# LDFLAGS --fatal-warnings below. Everything else stays -Wall -Werror (hollow-grid-asm#68).
+NASMFLAGS ?= -f elf64 -Wall -Werror -Wno-reloc-rel-dword -Wno-reloc-abs-qword -Iinclude/ -Iasm/ -g -F dwarf
 # --fatal-warnings gates DT_TEXTREL and friends; keep pointer tables in .data.rel.ro.
 LDFLAGS ?= -pie -Wl,-z,relro,-z,now,-z,noexecstack -Wl,--fatal-warnings
 LDLIBS += $(shell $(PKG_CONFIG) --libs libwebsockets libcjson openssl libcurl) -lcrypt
