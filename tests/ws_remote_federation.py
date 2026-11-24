@@ -146,6 +146,7 @@ def main() -> None:
             {
                 "GRID_HUB_URL": f"http://127.0.0.1:{hub_port}",
                 "GRID_HUB_TOKEN": "test-token",
+                "GRID_WORLD_KEY": "test-world-key",
                 "WORLD_URL": f"ws://127.0.0.1:{mud_port}/ws",
             }
         )

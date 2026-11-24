@@ -125,13 +125,32 @@ static size_t curl_write_cb(char *ptr, size_t size, size_t nmemb,
   return add;
 }
 
+static int hub_write_method(const char *method) {
+  return strcmp(method, "commitCharacter") == 0 ||
+         strcmp(method, "reportPresence") == 0 ||
+         strcmp(method, "register") == 0 ||
+         strcmp(method, "claimCharacterLease") == 0 ||
+         strcmp(method, "releaseCharacterLease") == 0 ||
+         strcmp(method, "record") == 0 ||
+         strcmp(method, "shiftTide") == 0 ||
+         strcmp(method, "gridcast") == 0 ||
+         strcmp(method, "recordFallen") == 0 ||
+         strcmp(method, "recordRescued") == 0 ||
+         strcmp(method, "pruneLedgerKinds") == 0;
+}
+
 /* 0 = ok (result may be NULL for JSON null). -1 = transport/RPC failure.
  * Fail-open: callers must treat -1 as "hub unreachable", never fatal. */
 static int rpc_call(const char *method, cJSON *params, cJSON **out_result) {
   if (out_result != NULL) {
     *out_result = NULL;
   }
-  if (!g.remote || g.curl == NULL) {
+  if (!g.remote || g.curl == NULL || method == NULL) {
+    cJSON_Delete(params);
+    return -1;
+  }
+  if (hub_write_method(method) &&
+      (!header_value_ok(g.world_name) || !header_value_ok(g.world_key))) {
     cJSON_Delete(params);
     return -1;
   }
@@ -214,7 +233,7 @@ static int claim_lease(const char *name) {
     return -1;
   }
   if (g.world_key[0] == '\0') {
-    return 0;
+    return -1;
   }
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params, cJSON_CreateString(name != NULL ? name : ""));
