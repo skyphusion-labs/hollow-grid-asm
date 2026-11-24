@@ -35,13 +35,7 @@ jobs:
           ADMIN_TOKEN: ci-test-admin-token
         run: make check
       - name: Fetch upstream smoke suite
-        run: |
-          git clone --depth 1 \
-            https://github.com/skyphusion-labs/the-hollow-grid.git /tmp/the-hollow-grid
-          git -C /tmp/the-hollow-grid fetch --depth 1 origin \
-            67eb601e593fe05febd75fd8e5fa6bfd363ee661
-          git -C /tmp/the-hollow-grid checkout \
-            67eb601e593fe05febd75fd8e5fa6bfd363ee661
+        run: git clone --depth 1 https://github.com/skyphusion-labs/the-hollow-grid.git /tmp/the-hollow-grid
       - name: Blocking upstream smoke
         env:
           SMOKE_MJS: /tmp/the-hollow-grid/smoke.mjs
