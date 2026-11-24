@@ -1,0 +1,11 @@
+.git/
+.github/
+build/
+.wrangler/
+node_modules/
+.env
+.local/
+.dev.vars
+*.o
+*.core
+.DS_Store

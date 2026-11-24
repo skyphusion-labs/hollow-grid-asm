@@ -65,9 +65,12 @@ class HubHandler(BaseHTTPRequestHandler):
                     "ashsworn": False,
                 },
             )
+        elif method == "claimCharacterLease":
+            result = True
         elif method == "commitCharacter":
-            CHARACTERS[params[0]] = params[1]
-            result = params[1]
+            sheet = params[2] if len(params) > 2 and isinstance(params[2], dict) else params[1]
+            CHARACTERS[params[0]] = sheet
+            result = sheet
         elif method == "presence":
             result = [
                 {

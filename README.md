@@ -4,8 +4,19 @@
 written primarily in NASM assembly. A tiny C shim adapts the libwebsockets ABI.
 Assembly owns game rules, state transitions, protocol framing, and world content.
 
-Public world is offline. The fleet host is retired. GHCR image: `ghcr.io/skyphusion-labs/hollow-grid-asm` (push gated by
+The fleet host is retired. GHCR image: `ghcr.io/skyphusion-labs/hollow-grid-asm` (push gated by
 `BASALT_AUTODEPLOY` / version tag until re-enable).
+
+## Cloudflare
+
+One Durable Object runs the existing container.
+The object starts the image, forwards `/ws`, and stores a filesystem snapshot.
+The container reaches `https://grid-hub.skyphusion.org/rpc`.
+`ADMIN_TOKEN`, `GRID_HUB_TOKEN`, and `GRID_WORLD_KEY` are Worker secrets.
+Hub writes need `GRID_WORLD_KEY`.
+The hub map must include this world name.
+The container sleeps when it is idle.
+This path is deployed at `wss://basalt.skyphusion.org/ws`.
 
 ## Contract
 
