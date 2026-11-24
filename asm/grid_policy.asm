@@ -711,8 +711,8 @@ hg_cmd_ping:
     inc ebx
     jmp .ping_all_local
 .ping_all_remote:
-    lea rdi, [rel policy_ping_all]
-    mov esi, PING_ALL_LIMIT
+    mov edi, PING_ALL_LIMIT
+    lea rsi, [rel policy_ping_all]
     mov edx, PING_ALL_LIMIT
     lea rcx, [rsp + 160]
     call hg_grid_fetch_recent_across wrt ..plt
