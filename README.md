@@ -16,7 +16,10 @@ The container reaches `https://grid-hub.skyphusion.org/rpc`.
 Hub writes need `GRID_WORLD_KEY`.
 The hub map must include this world name.
 The container sleeps when it is idle.
-This path is deployed at `wss://basalt.skyphusion.org/ws`.
+Play in the browser at https://basalt.skyphusion.org/ or connect to
+`wss://basalt.skyphusion.org/ws` with a WebSocket client.
+The Worker serves the browser page and forwards the game socket to the container.
+The standalone container serves the game socket.
 
 ## Contract
 
@@ -87,9 +90,8 @@ docker run --rm -p 8793:8793 hollow-grid-asm
 CI (`ci.yml`) runs `make check` plus blocking upstream smoke. `release.yml`
 builds the image on every push/PR. GHCR push fires
 only on a pushed version tag (`v*`), never on a merge to `main` (#22), and
-only when repo variable `BASALT_AUTODEPLOY` is `true` (#20). Basalt Relay
-stays offline until both a tagged release and a code review land.
-There is no fleet host to roll it onto.
+only when repo variable `BASALT_AUTODEPLOY` is `true` (#20).
+Cloudflare hosts the public world separately from the GHCR release workflow.
 
 ## License
 
