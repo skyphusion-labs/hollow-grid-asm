@@ -4,7 +4,7 @@ This file is the guide for any coding agent and any contributor. Follow it.
 
 ## What this project is
 
-Basalt Relay is a Hollow Grid world node for x86-64 Linux. NASM owns the game. A small C layer covers the library ABI. The current phase is standalone. The public world stays offline.
+Basalt Relay is a Hollow Grid world node for x86-64 Linux. NASM owns the game. A small C layer covers the library ABI. The public world runs in a Cloudflare container. Play at https://basalt.skyphusion.org/ or connect to `wss://basalt.skyphusion.org/ws`.
 
 Do not claim playability, protocol parity, smoke results, federation, deployment, or a live host without a verified artifact. A plan line is not a result.
 
@@ -72,7 +72,12 @@ Other docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/COMMANDS.md](doc
 
 ## Release
 
-Image publish stays off. There is no host deploy.
+Cloudflare hosts the public world through `wrangler.jsonc`. The release workflow handles GHCR publishing separately.
+
+For a Worker-only change on the existing deployment, use Wrangler 4.168.0 or
+newer with `wrangler deploy --containers-rollout=none`. This reuses the deployed
+container image metadata. Before changing the container image, plan a data
+migration. A filesystem snapshot restores the image it was taken from.
 
 A merge to `main` runs CI. [.github/workflows/release.yml](.github/workflows/release.yml) builds the image. It does not push the image on that merge.
 

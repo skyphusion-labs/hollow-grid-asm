@@ -17,6 +17,7 @@ import socket
 import subprocess
 import sys
 import tempfile
+import time
 import urllib.request
 
 from ws_common import complete_login, connect, send_text
@@ -51,7 +52,7 @@ def wait_health(port: int) -> str:
                 if response.status == 200:
                     return response.read().decode()
         except OSError:
-            pass
+            time.sleep(0.1)
     raise RuntimeError("soak server did not become healthy")
 
 

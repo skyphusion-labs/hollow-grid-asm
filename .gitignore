@@ -4,4 +4,7 @@
 *.core
 *.profraw
 *.profdata
+.dev.vars
+.wrangler/
+node_modules/
 

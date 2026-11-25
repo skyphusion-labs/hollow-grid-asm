@@ -4,8 +4,9 @@ Basalt Relay has a green standalone conformance run (Phase 2). The linux/amd64
 image, health endpoints, WebSocket login, race menu, atomic persistence,
 character resume, canonical map, Relay Cut, declared movement, gameplay,
 moral arc, and LocalHub federation commands exercised by upstream smoke are
-verified. Public deploy at `wss://basalt.skyphusion.org/ws` was taken offline
-after remote-crash bugs (#11 family); re-enable only after those fixes land.
+verified for that run. Basalt Relay now runs in a Cloudflare container at
+`wss://basalt.skyphusion.org/ws`. The earlier fleet deployment was taken
+offline after remote crashes (#11 family).
 Two-world Phase 12 against Dustfall runs (not SKIP); remaining cross-hub FAILs
 are recorded in Phase 4 evidence.
 

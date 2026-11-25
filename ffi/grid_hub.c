@@ -65,6 +65,7 @@ static struct {
   char world_url[160];
   char hub_url[256];
   char token[256];
+  char world_key[128];
   CURL *curl;
   int curl_global_owned;
   long long last_federation_tick_ms;
@@ -90,6 +91,18 @@ static void safe_copy(char *dst, size_t cap, const char *src) {
 }
 #pragma GCC diagnostic pop
 
+static int header_value_ok(const char *value) {
+  if (value == NULL || value[0] == '\0') {
+    return 0;
+  }
+  for (const char *p = value; *p != '\0'; ++p) {
+    if (*p == '\r' || *p == '\n') {
+      return 0;
+    }
+  }
+  return 1;
+}
+
 /* ---------- RemoteHub transport ---------- */
 
 struct hg_membuf {
@@ -112,13 +125,32 @@ static size_t curl_write_cb(char *ptr, size_t size, size_t nmemb,
   return add;
 }
 
+static int hub_write_method(const char *method) {
+  return strcmp(method, "commitCharacter") == 0 ||
+         strcmp(method, "reportPresence") == 0 ||
+         strcmp(method, "register") == 0 ||
+         strcmp(method, "claimCharacterLease") == 0 ||
+         strcmp(method, "releaseCharacterLease") == 0 ||
+         strcmp(method, "record") == 0 ||
+         strcmp(method, "shiftTide") == 0 ||
+         strcmp(method, "gridcast") == 0 ||
+         strcmp(method, "recordFallen") == 0 ||
+         strcmp(method, "recordRescued") == 0 ||
+         strcmp(method, "pruneLedgerKinds") == 0;
+}
+
 /* 0 = ok (result may be NULL for JSON null). -1 = transport/RPC failure.
  * Fail-open: callers must treat -1 as "hub unreachable", never fatal. */
 static int rpc_call(const char *method, cJSON *params, cJSON **out_result) {
   if (out_result != NULL) {
     *out_result = NULL;
   }
-  if (!g.remote || g.curl == NULL) {
+  if (!g.remote || g.curl == NULL || method == NULL) {
+    cJSON_Delete(params);
+    return -1;
+  }
+  if (hub_write_method(method) &&
+      (!header_value_ok(g.world_name) || !header_value_ok(g.world_key))) {
     cJSON_Delete(params);
     return -1;
   }
@@ -143,9 +175,19 @@ static int rpc_call(const char *method, cJSON *params, cJSON **out_result) {
   headers = curl_slist_append(headers, "Content-Type: application/json");
   headers = curl_slist_append(headers, "User-Agent: hollow-grid-asm/0.1.0");
   char auth[320];
+  char world_hdr[160];
+  char key_hdr[200];
   if (g.token[0] != '\0') {
     snprintf(auth, sizeof(auth), "Authorization: Bearer %s", g.token);
     headers = curl_slist_append(headers, auth);
+  }
+  if (g.world_name[0] != '\0' && header_value_ok(g.world_name)) {
+    snprintf(world_hdr, sizeof(world_hdr), "X-Grid-World: %s", g.world_name);
+    headers = curl_slist_append(headers, world_hdr);
+  }
+  if (g.world_key[0] != '\0' && header_value_ok(g.world_key)) {
+    snprintf(key_hdr, sizeof(key_hdr), "X-Grid-World-Key: %s", g.world_key);
+    headers = curl_slist_append(headers, key_hdr);
   }
 
   curl_easy_reset(g.curl);
@@ -186,6 +228,19 @@ static int rpc_call(const char *method, cJSON *params, cJSON **out_result) {
   return 0;
 }
 
+static int claim_lease(const char *name) {
+  if (!g.remote || g.world_name[0] == '\0') {
+    return -1;
+  }
+  if (g.world_key[0] == '\0') {
+    return -1;
+  }
+  cJSON *params = cJSON_CreateArray();
+  cJSON_AddItemToArray(params, cJSON_CreateString(name != NULL ? name : ""));
+  cJSON_AddItemToArray(params, cJSON_CreateString(g.world_name));
+  return rpc_call("claimCharacterLease", params, NULL);
+}
+
 static const char *json_str(const cJSON *obj, const char *key) {
   const cJSON *item = cJSON_GetObjectItemCaseSensitive(obj, key);
   return cJSON_IsString(item) && item->valuestring != NULL ? item->valuestring
@@ -224,6 +279,11 @@ int hg_grid_boot(const char *world_name, const char *world_url,
     g.hub_url[--len] = '\0';
   }
   safe_copy(g.token, sizeof(g.token), token);
+  {
+    const char *world_key = getenv("GRID_WORLD_KEY");
+    safe_copy(g.world_key, sizeof(g.world_key),
+              world_key != NULL ? world_key : "");
+  }
 
   if (curl_global_init(CURL_GLOBAL_DEFAULT) != 0) {
     /* Fail open to LocalHub rather than failing boot outright. */
@@ -484,6 +544,7 @@ int hg_grid_fetch_character(const char *name, hg_grid_character_row *out) {
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params,
                        cJSON_CreateString(name != NULL ? name : ""));
+  cJSON_AddItemToArray(params, cJSON_CreateString(g.world_name));
   if (rpc_call("loadCharacter", params, &result) != 0) {
     cJSON_Delete(result);
     return -1;
@@ -647,6 +708,9 @@ int hg_grid_gridcast(const char *sender, const char *text) {
   if (!g.remote) {
     return hg_grid_local_gridcast(sender, text);
   }
+  if (claim_lease(sender) != 0) {
+    return -1;
+  }
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params, cJSON_CreateString(g.world_name));
   cJSON_AddItemToArray(params, cJSON_CreateString(sender != NULL ? sender : ""));
@@ -736,8 +800,12 @@ int hg_grid_commit_character(const char *name,
   if (!g.remote) {
     return 0;
   }
+  if (claim_lease(name) != 0) {
+    return -1;
+  }
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params, cJSON_CreateString(name != NULL ? name : ""));
+  cJSON_AddItemToArray(params, cJSON_CreateString(g.world_name));
   cJSON *obj = cJSON_CreateObject();
   cJSON_AddNumberToObject(obj, "level", (double)ctx->level);
   cJSON_AddNumberToObject(obj, "xp", (double)ctx->xp);

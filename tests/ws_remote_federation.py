@@ -65,9 +65,12 @@ class HubHandler(BaseHTTPRequestHandler):
                     "ashsworn": False,
                 },
             )
+        elif method == "claimCharacterLease":
+            result = True
         elif method == "commitCharacter":
-            CHARACTERS[params[0]] = params[1]
-            result = params[1]
+            sheet = params[2] if len(params) > 2 and isinstance(params[2], dict) else params[1]
+            CHARACTERS[params[0]] = sheet
+            result = sheet
         elif method == "presence":
             result = [
                 {
@@ -143,6 +146,7 @@ def main() -> None:
             {
                 "GRID_HUB_URL": f"http://127.0.0.1:{hub_port}",
                 "GRID_HUB_TOKEN": "test-token",
+                "GRID_WORLD_KEY": "test-world-key",
                 "WORLD_URL": f"ws://127.0.0.1:{mud_port}/ws",
             }
         )
