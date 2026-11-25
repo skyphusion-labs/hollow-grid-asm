@@ -540,9 +540,6 @@ int hg_grid_fetch_character(const char *name, hg_grid_character_row *out) {
   if (!g.remote) {
     return 0;
   }
-  if (claim_lease(name) != 0) {
-    return -1;
-  }
   cJSON *result = NULL;
   cJSON *params = cJSON_CreateArray();
   cJSON_AddItemToArray(params,

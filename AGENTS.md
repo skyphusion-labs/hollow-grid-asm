@@ -74,6 +74,11 @@ Other docs: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/COMMANDS.md](doc
 
 Cloudflare hosts the public world through `wrangler.jsonc`. The release workflow handles GHCR publishing separately.
 
+For a Worker-only change on the existing deployment, use Wrangler 4.168.0 or
+newer with `wrangler deploy --containers-rollout=none`. This reuses the deployed
+container image metadata. Before changing the container image, plan a data
+migration. A filesystem snapshot restores the image it was taken from.
+
 A merge to `main` runs CI. [.github/workflows/release.yml](.github/workflows/release.yml) builds the image. It does not push the image on that merge.
 
 A `v*` tag pushes `ghcr.io/skyphusion-labs/hollow-grid-asm` as `:<sha>` and `:latest` only when the repo variable `BASALT_AUTODEPLOY` is `true`. `release.yml` does not check that the tag commit is an ancestor of `origin/main`.
