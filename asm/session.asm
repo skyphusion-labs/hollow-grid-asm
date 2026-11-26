@@ -547,10 +547,21 @@ hg_app_callback:
     lea rsi, [r13 + SESSION_OUT]
     ; rdx already holds length (3rd arg)
     call hg_ws_write wrt ..plt
-    ; 0 = fully sent (clear). nonzero = retry later (keep OUT).
+    ; eax < 0: the write failed. eax > 0: a partial write, keep OUT.
+    ; eax == 0: the buffer was accepted. Clear it.
     test eax, eax
-    jnz .maybe_close
+    js .maybe_close
+    jnz .defer_close
     mov qword [r13 + SESSION_OUT_LEN], 0
+.defer_close:
+    ; Returning -1 from this same callback aborts the socket before lws
+    ; can put the frame on the wire. Travel then closes with an empty
+    ; reply. Ask for one more writable and close only when OUT is empty.
+    cmp qword [r13 + SESSION_CLOSE], 0
+    je .ok
+    mov rdi, r12
+    call hg_ws_request_write wrt ..plt
+    jmp .ok
 .maybe_close:
     cmp qword [r13 + SESSION_CLOSE], 0
     je .ok
