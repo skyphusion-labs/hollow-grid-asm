@@ -171,6 +171,40 @@ void hg_ws_request_write(void *socket) {
   lws_callback_on_writable((struct lws *)socket);
 }
 
+/* Nonzero when the last write is still inside lws. */
+int hg_ws_partial(void *socket) {
+  if (socket == NULL) {
+    return 0;
+  }
+  return lws_partial_buffered((struct lws *)socket);
+}
+
+extern void *hg_session_at(int index);
+
+/* SESSION_CLOSE > 1 is a deadline in ms. Wake that socket once it is due. */
+static void wake_due_closes(long long now_ms) {
+  for (int i = 0; i < HG_MAX_SESSIONS; i++) {
+    unsigned char *session = hg_session_at(i);
+    long long close_at;
+    int64_t wsi_bits;
+
+    if (session == NULL) {
+      continue;
+    }
+    close_at = hg_s_i64(session, HG_SESSION_CLOSE);
+    if (close_at <= 1 || now_ms < close_at) {
+      continue;
+    }
+    if (hg_s_i64(session, HG_SESSION_OUT_LEN) != 0) {
+      continue;
+    }
+    wsi_bits = hg_s_i64(session, HG_SESSION_WSI);
+    if (wsi_bits != 0) {
+      lws_callback_on_writable((struct lws *)(uintptr_t)wsi_bits);
+    }
+  }
+}
+
 /* Only safe from LWS_CALLBACK_SERVER_WRITEABLE. */
 int hg_ws_write(void *socket, const unsigned char *data, size_t length) {
   struct lws *wsi = (struct lws *)socket;
@@ -208,6 +242,7 @@ static void tick_service(lws_sorted_usec_list_t *sul) {
   /* asm hg_heartbeat owns rest regen and the combat cadence end to end; the
    * shim keeps only the ~50ms beat and the federation poll. */
   hg_heartbeat(tick_now);
+  wake_due_closes(tick_now);
   hg_grid_federation_tick(tick_now);
   lws_sul_schedule(g_context, 0, sul, tick_service, 50 * LWS_US_PER_MS);
 }
