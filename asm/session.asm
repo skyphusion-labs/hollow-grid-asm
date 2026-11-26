@@ -76,6 +76,7 @@ extern hg_invalid_name_len
 extern hg_invalid_race
 extern hg_invalid_race_len
 extern hg_ws_request_write
+extern hg_ws_partial
 extern hg_ws_write
 extern hg_combat_tick_session
 extern hg_now_ms
@@ -551,20 +552,37 @@ hg_app_callback:
     ; eax == 0: the buffer was accepted. Clear it.
     test eax, eax
     js .maybe_close
-    jnz .defer_close
+    jnz .still_buffered
     mov qword [r13 + SESSION_OUT_LEN], 0
-.defer_close:
-    ; Returning -1 from this same callback aborts the socket before lws
-    ; can put the frame on the wire. Travel then closes with an empty
-    ; reply. Ask for one more writable and close only when OUT is empty.
-    cmp qword [r13 + SESSION_CLOSE], 0
-    je .ok
+    mov rdi, r12
+    call hg_ws_partial wrt ..plt
+    test eax, eax
+    jnz .still_buffered
+    ; lws accepted the bytes. Aborting in this callback, or in the next
+    ; one, drops the frame when the loop is busy. Arm a short deadline.
+    ; The 50ms beat closes the socket after the peer can read it.
+    cmp qword [r13 + SESSION_CLOSE], 1
+    jne .ok
+    call hg_now_ms wrt ..plt
+    add rax, 500
+    mov [r13 + SESSION_CLOSE], rax
+    jmp .ok
+.still_buffered:
+    cmp qword [r13 + SESSION_CLOSE], 1
+    jne .ok
     mov rdi, r12
     call hg_ws_request_write wrt ..plt
     jmp .ok
 .maybe_close:
-    cmp qword [r13 + SESSION_CLOSE], 0
-    je .ok
+    mov rax, [r13 + SESSION_CLOSE]
+    test rax, rax
+    jz .ok
+    cmp rax, 1
+    je .do_close
+    call hg_now_ms wrt ..plt
+    cmp rax, [r13 + SESSION_CLOSE]
+    jl .ok
+.do_close:
     mov eax, -1
     jmp .return
 

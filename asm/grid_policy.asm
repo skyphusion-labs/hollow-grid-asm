@@ -485,6 +485,8 @@ hg_cmd_travel:
     call queue_buf_h
     cmp byte [rel travel_handoff], 0
     je .done
+    ; Close after the handoff is queued. The writable callback waits until
+    ; the frame can leave before it aborts the socket.
     mov qword [r12 + SESSION_CLOSE], 1
 .done:
     add rsp, TRAV_FRAME
