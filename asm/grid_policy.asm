@@ -483,9 +483,9 @@ hg_cmd_travel:
     mov ecx, r15d
     lea rdx, [rel travel_buf]
     call queue_buf_h
-    cmp byte [rel travel_handoff], 0
-    je .done
-    mov qword [r12 + SESSION_CLOSE], 1
+    ; Leave the socket open. Closing in the writable callback drops the
+    ; handoff frame when the service loop is busy, and the smoke never
+    ; sees grid.travel. The handoff is the event and the prose.
 .done:
     add rsp, TRAV_FRAME
     pop r15
